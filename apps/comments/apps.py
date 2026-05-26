@@ -6,3 +6,6 @@ class CommentsConfig(AppConfig):
     name = "apps.comments"
     label = "comments"
     verbose_name = "Comments (threaded, 1-level)"
+
+    def ready(self) -> None:
+        from . import signals  # noqa: F401

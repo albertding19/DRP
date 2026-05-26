@@ -3,7 +3,32 @@
 {% block title %}{{ post.title }} — {{ PROJECT_NAME }}{% endblock %}
 
 {% block content %}
-<article class="post-detail">
+<article
+  class="post-detail"
+  x-data
+  x-init="$store.ws.connect('/ws/posts/{{ post.id }}/')"
+  x-on:ws:comment_created.window="
+    const thread = document.getElementById('thread');
+    const payload = event.detail;
+    if (!thread || !payload.html) return;
+    if (payload.parent_id) {
+      const replies = document.getElementById('replies-' + payload.parent_id);
+      if (replies) {
+        replies.insertAdjacentHTML('beforeend', payload.html);
+      }
+    } else {
+      thread.insertAdjacentHTML('afterbegin', payload.html);
+    }
+    const counter = document.querySelector('[data-comment-count]');
+    if (counter) counter.textContent = parseInt(counter.textContent || '0', 10) + 1;
+  "
+  x-on:ws:score_changed.window="
+    const el = document.querySelector(
+      `[data-score-${event.detail.target_type}-${event.detail.id}]`
+    );
+    if (el) el.textContent = event.detail.score;
+  "
+>
   <a href="{% url 'posts:feed' %}" class="back-link">← Back to feed</a>
 
   <header class="post-detail-header">
@@ -34,10 +59,7 @@
     {% include "votes/_vote_buttons.html" with target=post target_type="post" %}
   </div>
 
-  <section class="comments-placeholder">
-    <h3>Comments ({{ post.comment_count }})</h3>
-    <p class="muted">Threaded comments land Mon 1 Jun.</p>
-  </section>
+  {% include "comments/_thread.html" with post=post %}
 </article>
 {% endblock %}
 

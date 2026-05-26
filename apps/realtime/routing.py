@@ -1,11 +1,17 @@
 """WebSocket URL patterns.
 
-Imported by `config/asgi.py`. Consumers themselves land Thu 28 May.
-Empty list is fine for now — ASGI loads + HTTP works without any WS routes.
+Imported by `config/asgi.py`. Mount points:
+  /ws/feed/                 — FeedConsumer (subscribed on the feed page)
+  /ws/posts/<int:post_id>/  — PostConsumer (one channel per post)
 """
 
 from __future__ import annotations
 
-from django.urls import re_path
+from django.urls import path
 
-websocket_urlpatterns: list[re_path] = []
+from .consumers import FeedConsumer, PostConsumer
+
+websocket_urlpatterns = [
+    path("ws/feed/", FeedConsumer.as_asgi()),
+    path("ws/posts/<int:post_id>/", PostConsumer.as_asgi()),
+]

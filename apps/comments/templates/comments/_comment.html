@@ -1,0 +1,64 @@
+{% comment %}
+A single comment. Used at the top of a thread and recursively for replies.
+Context: { comment, post, thread_root (bool, true for top-level) }
+{% endcomment %}
+
+<article
+  class="comment {% if comment.parent_id %}comment-reply{% endif %}"
+  id="c{{ comment.id }}"
+  x-data="{ showReply: false }"
+>
+  <header class="comment-header">
+    <span class="comment-author">{{ comment.author.nickname|default:"[deleted]" }}</span>
+    <span class="comment-time">{{ comment.created_at|date:"j M Y, H:i" }}</span>
+  </header>
+
+  <div class="comment-body">{{ comment.body|linebreaksbr }}</div>
+
+  <footer class="comment-footer">
+    {% if not comment.parent_id %}
+      <button
+        type="button"
+        class="comment-action"
+        x-on:click="showReply = !showReply"
+        :aria-expanded="showReply"
+      >Reply</button>
+    {% endif %}
+    {% if request.user.is_authenticated and comment.author_id == request.user.id %}
+      <form
+        method="post"
+        action="{% url 'comments:delete' comment_pk=comment.id %}"
+        class="comment-delete-form"
+        hx-post="{% url 'comments:delete' comment_pk=comment.id %}"
+        hx-target="closest .comment"
+        hx-swap="outerHTML"
+      >
+        {% csrf_token %}
+        <button type="submit" class="comment-action comment-action-danger">Delete</button>
+      </form>
+    {% endif %}
+  </footer>
+
+  {% if not comment.parent_id %}
+    <div class="comment-reply-form" x-show="showReply" x-cloak>
+      <form
+        method="post"
+        action="{% url 'comments:reply' comment_pk=comment.id %}"
+        hx-post="{% url 'comments:reply' comment_pk=comment.id %}"
+        hx-target="#replies-{{ comment.id }}"
+        hx-swap="beforeend"
+        x-on:htmx:after-request="if (event.detail.successful) { showReply = false; $el.reset(); }"
+      >
+        {% csrf_token %}
+        <textarea name="body" rows="3" placeholder="Write a reply…" required></textarea>
+        <button type="submit" class="btn btn-primary btn-sm">Post reply</button>
+      </form>
+    </div>
+
+    <div class="comment-replies" id="replies-{{ comment.id }}">
+      {% for reply in comment.replies.all %}
+        {% include "comments/_comment.html" with comment=reply post=post thread_root=False %}
+      {% endfor %}
+    </div>
+  {% endif %}
+</article>

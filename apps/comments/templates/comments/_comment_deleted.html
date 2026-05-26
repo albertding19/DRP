@@ -1,0 +1,7 @@
+{% comment %}
+Rendered when a comment is soft-deleted. Keeps the thread structure intact.
+{% endcomment %}
+
+<article class="comment comment-deleted" id="c{{ comment.id }}">
+  <div class="comment-body">[deleted]</div>
+</article>

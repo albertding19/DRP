@@ -3,7 +3,25 @@
 {% block title %}Feed — {{ PROJECT_NAME }}{% endblock %}
 
 {% block content %}
-<section class="feed">
+<section
+  class="feed"
+  x-data
+  x-init="$store.ws.connect('/ws/feed/')"
+  x-on:ws:post_created.window="
+    if (event.detail.html) {
+      const list = document.querySelector('.post-list');
+      if (list) {
+        list.insertAdjacentHTML('afterbegin', event.detail.html);
+      }
+    }
+  "
+  x-on:ws:score_changed.window="
+    const el = document.querySelector(
+      `[data-score-${event.detail.target_type}-${event.detail.id}]`
+    );
+    if (el) el.textContent = event.detail.score;
+  "
+>
   <header class="feed-header">
     {% if filtered_tag %}
       <h1>#{{ filtered_tag.name }}</h1>

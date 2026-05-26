@@ -30,7 +30,7 @@ template tag-free heuristic below.
     aria-label="Upvote"
     title="Upvote"
   >▲</button>
-  <span class="vote-score">{{ current_score }}</span>
+  <span class="vote-score" data-score-{{ target_type }}-{{ target.id }}>{{ current_score }}</span>
   <button
     type="submit"
     name="value"
