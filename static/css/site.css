@@ -22,10 +22,22 @@ body {
 .site-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 1rem;
   padding: 1rem 1.5rem;
   border-bottom: 1px solid var(--border);
   background: white;
+}
+
+.site-search {
+  flex: 1;
+  max-width: 360px;
+  margin: 0 auto;
+}
+
+.site-search input {
+  width: 100%;
+  font-size: 0.875rem;
+  padding: 0.4rem 0.75rem;
 }
 
 .site-brand {

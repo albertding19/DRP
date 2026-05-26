@@ -5,12 +5,18 @@
 {% block content %}
 <section class="feed">
   <header class="feed-header">
-    <h1>Strategies & problems</h1>
+    {% if filtered_tag %}
+      <h1>#{{ filtered_tag.name }}</h1>
+      <a href="{% url 'posts:feed' %}" class="filter-clear">× clear filter</a>
+    {% else %}
+      <h1>Strategies &amp; problems</h1>
+    {% endif %}
     <nav class="feed-sort">
       <a href="?sort=new" class="{% if sort == 'new' %}active{% endif %}">New</a>
       <a href="?sort=top" class="{% if sort == 'top' %}active{% endif %}">Top</a>
       <a href="?sort=hot" class="{% if sort == 'hot' %}active{% endif %}">Hot</a>
     </nav>
+    <a href="{% url 'tags:list' %}" class="btn btn-secondary">Tags</a>
     <a href="{% url 'posts:create' %}" class="btn btn-primary">+ Share</a>
   </header>
 
@@ -53,6 +59,10 @@
   .btn { display: inline-block; padding: 0.5rem 1rem; border-radius: 6px; text-decoration: none; font-size: 0.875rem; }
   .btn-primary { background: var(--accent); color: white; }
   .btn-primary:hover { opacity: 0.9; }
+  .btn-secondary { background: white; color: var(--fg); border: 1px solid var(--border); }
+  .btn-secondary:hover { background: #f5f5f5; }
+  .filter-clear { color: var(--fg-muted); text-decoration: none; font-size: 0.8rem; margin-left: -0.5rem; }
+  .filter-clear:hover { color: var(--accent); }
   .post-list { list-style: none; padding: 0; margin: 0; }
   .empty-state { text-align: center; padding: 3rem 1rem; color: var(--fg-muted); }
   .empty-state p:first-child { font-size: 1.125rem; color: var(--fg); margin-bottom: 0.5rem; }

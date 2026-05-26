@@ -19,6 +19,13 @@
       {{ post.comment_count }} comment{{ post.comment_count|pluralize }}
     </p>
     <p class="post-card-excerpt">{{ post.body|truncatewords:30|linebreaksbr }}</p>
+    {% if post.tags.all %}
+      <p class="post-card-tags">
+        {% for tag in post.tags.all %}
+          <a href="{% url 'tags:detail' slug=tag.slug %}" class="tag-pill-sm">#{{ tag.name }}</a>
+        {% endfor %}
+      </p>
+    {% endif %}
   </div>
 </li>
 
@@ -34,4 +41,7 @@
   .post-card-type-problem { background: #fef3c7; color: #92400e; }
   .post-card-type-strategy { background: #dcfce7; color: #166534; }
   .post-card-excerpt { margin: 0; color: var(--fg); }
+  .post-card-tags { margin: 0.5rem 0 0; display: flex; flex-wrap: wrap; gap: 0.3rem; }
+  .tag-pill-sm { background: rgba(37, 99, 235, 0.08); color: var(--accent); padding: 0.1rem 0.5rem; border-radius: 999px; text-decoration: none; font-size: 0.75rem; }
+  .tag-pill-sm:hover { background: rgba(37, 99, 235, 0.15); }
 </style>

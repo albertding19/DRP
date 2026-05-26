@@ -32,6 +32,11 @@ class Post(TimeStampedModel, SoftDeletableModel):
     post_type = models.CharField(max_length=16, choices=TYPE_CHOICES, default=STRATEGY)
     score = models.IntegerField(default=0, db_index=True)
     comment_count = models.IntegerField(default=0)
+    tags = models.ManyToManyField(
+        "tags.Tag",
+        related_name="posts",
+        blank=True,
+    )
 
     class Meta:
         ordering = ["-created_at"]

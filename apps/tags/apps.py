@@ -5,4 +5,7 @@ class TagsConfig(AppConfig):
     default_auto_field = "django.db.models.BigAutoField"
     name = "apps.tags"
     label = "tags"
-    verbose_name = "Tags (M3 stub)"
+    verbose_name = "Tags"
+
+    def ready(self) -> None:
+        from . import signals  # noqa: F401

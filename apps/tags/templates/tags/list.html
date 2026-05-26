@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+
+{% block title %}Tags — {{ PROJECT_NAME }}{% endblock %}
+
+{% block content %}
+<section class="tags-list-page">
+  <a href="{% url 'posts:feed' %}" class="back-link">← Back to feed</a>
+  <h1>Tags</h1>
+
+  {% if tags %}
+    <ul class="tag-list">
+      {% for tag in tags %}
+        <li class="tag-list-item">
+          <a href="{% url 'tags:detail' slug=tag.slug %}" class="tag-pill">
+            #{{ tag.name }}
+          </a>
+          <span class="tag-count">{{ tag.post_count }} post{{ tag.post_count|pluralize }}</span>
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p class="empty-state">No tags yet. Tags appear when people add them on posts.</p>
+  {% endif %}
+</section>
+{% endblock %}
+
+{% block head_extra %}
+<style>
+  .tags-list-page h1 { margin: 1rem 0 2rem; }
+  .tag-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.5rem; }
+  .tag-list-item { display: flex; align-items: baseline; justify-content: space-between; padding: 0.5rem 0; border-bottom: 1px solid var(--border); }
+  .tag-pill { background: rgba(37, 99, 235, 0.08); color: var(--accent); padding: 0.25rem 0.75rem; border-radius: 999px; text-decoration: none; font-size: 0.875rem; }
+  .tag-pill:hover { background: rgba(37, 99, 235, 0.15); }
+  .tag-count { color: var(--fg-muted); font-size: 0.8rem; }
+  .back-link { color: var(--fg-muted); text-decoration: none; font-size: 0.875rem; }
+  .empty-state { color: var(--fg-muted); padding: 2rem 0; }
+</style>
+{% endblock %}

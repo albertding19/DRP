@@ -22,6 +22,14 @@
     {{ post.body|linebreaksbr }}
   </div>
 
+  {% if post.tags.all %}
+    <p class="post-detail-tags">
+      {% for tag in post.tags.all %}
+        <a href="{% url 'tags:detail' slug=tag.slug %}" class="tag-pill-sm">#{{ tag.name }}</a>
+      {% endfor %}
+    </p>
+  {% endif %}
+
   <div class="post-detail-actions">
     {% include "votes/_vote_buttons.html" with target=post target_type="post" %}
   </div>
@@ -47,5 +55,8 @@
   .post-detail-actions { margin: 1rem 0; }
   .comments-placeholder { margin-top: 3rem; padding-top: 1.5rem; border-top: 1px solid var(--border); }
   .muted { color: var(--fg-muted); font-style: italic; }
+  .post-detail-tags { display: flex; flex-wrap: wrap; gap: 0.3rem; margin: 0.5rem 0 1rem; }
+  .tag-pill-sm { background: rgba(37, 99, 235, 0.08); color: var(--accent); padding: 0.15rem 0.55rem; border-radius: 999px; text-decoration: none; font-size: 0.8rem; }
+  .tag-pill-sm:hover { background: rgba(37, 99, 235, 0.15); }
 </style>
 {% endblock %}

@@ -22,9 +22,16 @@ from .services import create_post, feed_queryset
 
 @require_http_methods(["GET"])
 def feed(request: HttpRequest) -> HttpResponse:
-    """The home page — paginated list of posts."""
+    """The home page — paginated list of posts.
+
+    Supports ?sort= and ?tag= filters. Tag filter is preferred via
+    /tags/<slug>/ for clean URLs, but the query param works too.
+    """
     sort = request.GET.get("sort", "new")
     qs = feed_queryset(sort=sort)
+    tag_slug = request.GET.get("tag")
+    if tag_slug:
+        qs = qs.filter(tags__slug=tag_slug)
     page = Paginator(qs, per_page=25).get_page(request.GET.get("page", 1))
     return render(
         request,
@@ -52,6 +59,7 @@ def create(request: HttpRequest) -> HttpResponse:
                 title=form.cleaned_data["title"],
                 body=form.cleaned_data["body"],
                 post_type=form.cleaned_data["post_type"],
+                tag_names=form.cleaned_data.get("tags") or [],
             )
             return redirect(reverse("posts:detail", args=[post.pk]))
     else:

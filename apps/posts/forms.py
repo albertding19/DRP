@@ -4,11 +4,25 @@ from __future__ import annotations
 
 from django import forms
 
+from apps.tags.services import parse_tags_input
+
 from .models import Post
 
 
 class PostForm(forms.ModelForm):
-    """The Share form. Tags will land in M3."""
+    """The Share form. Tags entered as comma-separated; parsed/normalised on clean."""
+
+    tags = forms.CharField(
+        required=False,
+        max_length=200,
+        widget=forms.TextInput(
+            attrs={
+                "placeholder": "comma, separated, tags",
+                "autocomplete": "off",
+            }
+        ),
+        help_text="Optional. Comma-separated. Max 5 tags.",
+    )
 
     class Meta:
         model = Post
@@ -49,3 +63,11 @@ class PostForm(forms.ModelForm):
         if not body:
             raise forms.ValidationError("Body can't be empty.")
         return body
+
+    def clean_tags(self) -> list[str]:
+        raw = self.cleaned_data.get("tags", "")
+        parsed = parse_tags_input(raw)
+        if len(parsed) > 5:
+            raise forms.ValidationError("At most 5 tags allowed.")
+        # Return the display-name strings; service does the slug dedup.
+        return [name for name, _slug in parsed]

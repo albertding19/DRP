@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+
+{% block title %}{% if q %}Search: {{ q }}{% else %}Search{% endif %} — {{ PROJECT_NAME }}{% endblock %}
+
+{% block content %}
+<section class="search">
+  <a href="{% url 'posts:feed' %}" class="back-link">← Back to feed</a>
+
+  <form method="get" action="{% url 'search:search' %}" class="search-bar">
+    <input
+      type="search"
+      name="q"
+      value="{{ q }}"
+      placeholder="Search posts…"
+      autocomplete="off"
+      autofocus
+    >
+    <button type="submit">Search</button>
+  </form>
+
+  {% if q %}
+    <h2 class="search-summary">
+      {% if posts %}
+        {{ page.paginator.count }} result{{ page.paginator.count|pluralize }} for "{{ q }}"
+      {% else %}
+        No results for "{{ q }}"
+      {% endif %}
+    </h2>
+
+    {% if posts %}
+      <ul class="post-list">
+        {% for post in posts %}
+          {% include "posts/_post_card.html" with post=post %}
+        {% endfor %}
+      </ul>
+
+      {% if page.has_other_pages %}
+        <nav class="pagination">
+          {% if page.has_previous %}
+            <a href="?q={{ q }}&page={{ page.previous_page_number }}">← Previous</a>
+          {% endif %}
+          <span>Page {{ page.number }} of {{ page.paginator.num_pages }}</span>
+          {% if page.has_next %}
+            <a href="?q={{ q }}&page={{ page.next_page_number }}">Next →</a>
+          {% endif %}
+        </nav>
+      {% endif %}
+    {% endif %}
+  {% endif %}
+</section>
+{% endblock %}
+
+{% block head_extra %}
+<style>
+  .search { max-width: 720px; }
+  .search-bar { display: flex; gap: 0.5rem; margin: 1.5rem 0 2rem; }
+  .search-bar input { flex: 1; font-size: 1rem; }
+  .search-bar button { background: var(--accent); color: white; border: 0; padding: 0.5rem 1.25rem; border-radius: 6px; cursor: pointer; }
+  .search-summary { font-size: 1rem; color: var(--fg-muted); font-weight: normal; margin: 1rem 0 1.5rem; }
+  .post-list { list-style: none; padding: 0; }
+  .back-link { color: var(--fg-muted); text-decoration: none; font-size: 0.875rem; }
+  .pagination { display: flex; align-items: center; justify-content: space-between; margin-top: 2rem; font-size: 0.875rem; color: var(--fg-muted); }
+  .pagination a { color: var(--accent); text-decoration: none; }
+</style>
+{% endblock %}

@@ -35,6 +35,13 @@
       {% if form.body.errors %}<div class="form-error">{{ form.body.errors.0 }}</div>{% endif %}
     </div>
 
+    <div class="form-row">
+      <label for="{{ form.tags.id_for_label }}">Tags</label>
+      {{ form.tags }}
+      <small class="form-help">{{ form.tags.help_text }}</small>
+      {% if form.tags.errors %}<div class="form-error">{{ form.tags.errors.0 }}</div>{% endif %}
+    </div>
+
     <div class="form-actions">
       <a href="{% url 'posts:feed' %}" class="btn btn-secondary">Cancel</a>
       <button type="submit" class="btn btn-primary">Share</button>
@@ -55,6 +62,7 @@
   .radio-option { display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 1rem; border: 1px solid var(--border); border-radius: 6px; cursor: pointer; }
   .radio-option:has(input:checked) { border-color: var(--accent); background: rgba(37, 99, 235, 0.05); }
   .form-error { color: #c00; font-size: 0.875rem; }
+  .form-help { color: var(--fg-muted); font-size: 0.8rem; }
   .form-actions { display: flex; justify-content: flex-end; gap: 0.75rem; }
   .btn { padding: 0.5rem 1.25rem; border-radius: 6px; text-decoration: none; font-size: 0.875rem; border: 1px solid transparent; cursor: pointer; }
   .btn-primary { background: var(--accent); color: white; border-color: var(--accent); }

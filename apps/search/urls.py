@@ -1,7 +1,14 @@
-"""Search URLs — filled in during M3 (week of 1 Jun)."""
+"""Search URLs.
+
+Mounted under `search/` in config.urls — final path: `/search/?q=…`.
+"""
 
 from django.urls import path
 
+from . import views
+
 app_name = "search"
 
-urlpatterns: list[path] = []
+urlpatterns = [
+    path("", views.search, name="search"),
+]
