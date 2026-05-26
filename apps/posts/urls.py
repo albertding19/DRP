@@ -1,8 +1,11 @@
-"""Post URLs — filled in on Wed 27 May."""
+"""Post URLs — placeholder feed today, full CRUD lands Wed 27 May."""
 
 from django.urls import path
 
+from . import views
+
 app_name = "posts"
 
-# Stub: no urls yet. Filled in when feed/create/detail views land Wed.
-urlpatterns: list[path] = []
+urlpatterns = [
+    path("", views.feed, name="feed"),
+]

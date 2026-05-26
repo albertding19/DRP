@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+
+{% block title %}Feed — {{ PROJECT_NAME }}{% endblock %}
+
+{% block content %}
+<section class="feed">
+  <h1>Hello, {{ request.user.nickname }}.</h1>
+
+  {% if posts %}
+    <ul class="post-list">
+      {% for post in posts %}
+        <li class="post-card">
+          <h2>{{ post.title }}</h2>
+          <p class="post-meta">
+            {{ post.get_post_type_display }} ·
+            by {{ post.author.nickname|default:"[deleted]" }} ·
+            {{ post.created_at|date:"j M Y H:i" }}
+          </p>
+          <p>{{ post.body|linebreaksbr }}</p>
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p class="empty-state">
+      No posts yet. The full share / upvote / comment flow lands Wednesday.
+    </p>
+    <p class="empty-state-sub">
+      For now you're authenticated as <code>{{ request.user.nickname }}</code>.
+      The footer below shows the deployed commit — push a change to
+      <code>main</code> and watch this SHA flip within ~5 minutes (live CD).
+    </p>
+  {% endif %}
+</section>
+{% endblock %}
+
+{% block head_extra %}
+<style>
+  .feed h1 { margin-bottom: 1.5rem; }
+  .feed .empty-state { color: var(--fg-muted); margin-top: 2rem; }
+  .feed .empty-state-sub { color: var(--fg-muted); font-size: 0.9rem; }
+  .post-list { list-style: none; padding: 0; }
+  .post-card { padding: 1rem; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 1rem; background: white; }
+  .post-card h2 { margin: 0 0 0.25rem; font-size: 1.125rem; }
+  .post-meta { color: var(--fg-muted); font-size: 0.85rem; margin: 0 0 0.5rem; }
+</style>
+{% endblock %}
