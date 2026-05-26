@@ -1,0 +1,52 @@
+{% comment %}
+Re-usable vote control. Required template context:
+
+  target      — the Post or Comment instance
+  target_type — "post" or "comment"
+  score       — current score (defaults to target.score if not passed)
+  user_vote   — request.user's current vote: +1, -1, or 0
+
+If `score` or `user_vote` aren't supplied (e.g. first render from a feed
+include), we fall back to target.score and recompute user_vote via the
+template tag-free heuristic below.
+{% endcomment %}
+
+{% load votes_extras %}
+
+{% with current_score=score|default_if_none:target.score user_v=user_vote|default_if_none:0 %}
+<form
+  class="vote-buttons"
+  hx-post="{% url 'votes:cast' target_type=target_type object_id=target.id %}"
+  hx-target="this"
+  hx-swap="outerHTML"
+  method="post"
+>
+  {% csrf_token %}
+  <button
+    type="submit"
+    name="value"
+    value="1"
+    class="vote-up {% if user_v == 1 %}active{% endif %}"
+    aria-label="Upvote"
+    title="Upvote"
+  >▲</button>
+  <span class="vote-score">{{ current_score }}</span>
+  <button
+    type="submit"
+    name="value"
+    value="-1"
+    class="vote-down {% if user_v == -1 %}active{% endif %}"
+    aria-label="Downvote"
+    title="Downvote"
+  >▼</button>
+</form>
+{% endwith %}
+
+<style>
+  .vote-buttons { display: inline-flex; flex-direction: column; align-items: center; gap: 0.15rem; padding: 0; margin: 0; border: 0; background: transparent; }
+  .vote-buttons button { background: transparent; border: 1px solid transparent; color: var(--fg-muted); cursor: pointer; padding: 0.1rem 0.4rem; font-size: 1rem; line-height: 1; border-radius: 3px; }
+  .vote-buttons button:hover { background: rgba(0,0,0,0.04); color: var(--fg); }
+  .vote-buttons .vote-up.active { color: #2563eb; }
+  .vote-buttons .vote-down.active { color: #c00; }
+  .vote-buttons .vote-score { font-size: 0.875rem; font-weight: 600; color: var(--fg-muted); min-width: 1.5rem; text-align: center; }
+</style>

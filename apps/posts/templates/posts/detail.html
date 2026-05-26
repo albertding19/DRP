@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+
+{% block title %}{{ post.title }} — {{ PROJECT_NAME }}{% endblock %}
+
+{% block content %}
+<article class="post-detail">
+  <a href="{% url 'posts:feed' %}" class="back-link">← Back to feed</a>
+
+  <header class="post-detail-header">
+    <span class="post-card-type post-card-type-{{ post.post_type }}">
+      {{ post.get_post_type_display }}
+    </span>
+    <h1>{{ post.title }}</h1>
+    <p class="post-detail-meta">
+      by {{ post.author.nickname|default:"[deleted]" }}
+      ·
+      {{ post.created_at|date:"j M Y, H:i" }}
+    </p>
+  </header>
+
+  <div class="post-detail-body">
+    {{ post.body|linebreaksbr }}
+  </div>
+
+  <div class="post-detail-actions">
+    {% include "votes/_vote_buttons.html" with target=post target_type="post" %}
+  </div>
+
+  <section class="comments-placeholder">
+    <h3>Comments ({{ post.comment_count }})</h3>
+    <p class="muted">Threaded comments land Mon 1 Jun.</p>
+  </section>
+</article>
+{% endblock %}
+
+{% block head_extra %}
+<style>
+  .back-link { color: var(--fg-muted); text-decoration: none; font-size: 0.875rem; }
+  .back-link:hover { color: var(--accent); }
+  .post-detail-header { margin: 1.5rem 0; }
+  .post-detail-header h1 { margin: 0.5rem 0; }
+  .post-card-type { display: inline-block; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; padding: 0.15rem 0.5rem; border-radius: 3px; }
+  .post-card-type-problem { background: #fef3c7; color: #92400e; }
+  .post-card-type-strategy { background: #dcfce7; color: #166534; }
+  .post-detail-meta { color: var(--fg-muted); font-size: 0.875rem; margin: 0; }
+  .post-detail-body { background: white; padding: 1.5rem; border: 1px solid var(--border); border-radius: 8px; margin: 1.5rem 0; }
+  .post-detail-actions { margin: 1rem 0; }
+  .comments-placeholder { margin-top: 3rem; padding-top: 1.5rem; border-top: 1px solid var(--border); }
+  .muted { color: var(--fg-muted); font-style: italic; }
+</style>
+{% endblock %}

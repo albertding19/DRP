@@ -4,43 +4,60 @@
 
 {% block content %}
 <section class="feed">
-  <h1>Hello, {{ request.user.nickname }}.</h1>
+  <header class="feed-header">
+    <h1>Strategies & problems</h1>
+    <nav class="feed-sort">
+      <a href="?sort=new" class="{% if sort == 'new' %}active{% endif %}">New</a>
+      <a href="?sort=top" class="{% if sort == 'top' %}active{% endif %}">Top</a>
+      <a href="?sort=hot" class="{% if sort == 'hot' %}active{% endif %}">Hot</a>
+    </nav>
+    <a href="{% url 'posts:create' %}" class="btn btn-primary">+ Share</a>
+  </header>
 
   {% if posts %}
     <ul class="post-list">
       {% for post in posts %}
-        <li class="post-card">
-          <h2>{{ post.title }}</h2>
-          <p class="post-meta">
-            {{ post.get_post_type_display }} ·
-            by {{ post.author.nickname|default:"[deleted]" }} ·
-            {{ post.created_at|date:"j M Y H:i" }}
-          </p>
-          <p>{{ post.body|linebreaksbr }}</p>
-        </li>
+        {% include "posts/_post_card.html" with post=post %}
       {% endfor %}
     </ul>
+
+    {% if page.has_other_pages %}
+      <nav class="pagination">
+        {% if page.has_previous %}
+          <a href="?sort={{ sort }}&page={{ page.previous_page_number }}">← Previous</a>
+        {% endif %}
+        <span>Page {{ page.number }} of {{ page.paginator.num_pages }}</span>
+        {% if page.has_next %}
+          <a href="?sort={{ sort }}&page={{ page.next_page_number }}">Next →</a>
+        {% endif %}
+      </nav>
+    {% endif %}
+
   {% else %}
-    <p class="empty-state">
-      No posts yet. The full share / upvote / comment flow lands Wednesday.
-    </p>
-    <p class="empty-state-sub">
-      For now you're authenticated as <code>{{ request.user.nickname }}</code>.
-      The footer below shows the deployed commit — push a change to
-      <code>main</code> and watch this SHA flip within ~5 minutes (live CD).
-    </p>
+    <div class="empty-state">
+      <p><strong>No posts yet.</strong></p>
+      <p>Be the first — share a strategy that's helped you, or ask for advice on something you're stuck on.</p>
+      <a href="{% url 'posts:create' %}" class="btn btn-primary">+ Share the first post</a>
+    </div>
   {% endif %}
 </section>
 {% endblock %}
 
 {% block head_extra %}
 <style>
-  .feed h1 { margin-bottom: 1.5rem; }
-  .feed .empty-state { color: var(--fg-muted); margin-top: 2rem; }
-  .feed .empty-state-sub { color: var(--fg-muted); font-size: 0.9rem; }
-  .post-list { list-style: none; padding: 0; }
-  .post-card { padding: 1rem; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 1rem; background: white; }
-  .post-card h2 { margin: 0 0 0.25rem; font-size: 1.125rem; }
-  .post-meta { color: var(--fg-muted); font-size: 0.85rem; margin: 0 0 0.5rem; }
+  .feed-header { display: flex; align-items: baseline; gap: 1rem; margin-bottom: 1.5rem; }
+  .feed-header h1 { margin: 0; flex: 1; }
+  .feed-sort { display: flex; gap: 0.75rem; font-size: 0.875rem; }
+  .feed-sort a { color: var(--fg-muted); text-decoration: none; padding: 0.25rem 0.5rem; border-radius: 4px; }
+  .feed-sort a.active { color: var(--accent); background: rgba(37, 99, 235, 0.08); font-weight: 600; }
+  .btn { display: inline-block; padding: 0.5rem 1rem; border-radius: 6px; text-decoration: none; font-size: 0.875rem; }
+  .btn-primary { background: var(--accent); color: white; }
+  .btn-primary:hover { opacity: 0.9; }
+  .post-list { list-style: none; padding: 0; margin: 0; }
+  .empty-state { text-align: center; padding: 3rem 1rem; color: var(--fg-muted); }
+  .empty-state p:first-child { font-size: 1.125rem; color: var(--fg); margin-bottom: 0.5rem; }
+  .empty-state .btn { margin-top: 1rem; }
+  .pagination { display: flex; align-items: center; justify-content: space-between; margin-top: 2rem; font-size: 0.875rem; color: var(--fg-muted); }
+  .pagination a { color: var(--accent); text-decoration: none; }
 </style>
 {% endblock %}

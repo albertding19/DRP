@@ -1,7 +1,15 @@
-"""Vote URLs — filled in Wed 27 May with cast_vote view."""
+"""Vote URLs."""
 
 from django.urls import path
 
+from . import views
+
 app_name = "votes"
 
-urlpatterns: list[path] = []
+urlpatterns = [
+    path(
+        "vote/<str:target_type>/<int:object_id>/",
+        views.cast,
+        name="cast",
+    ),
+]

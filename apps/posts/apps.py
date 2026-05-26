@@ -6,3 +6,7 @@ class PostsConfig(AppConfig):
     name = "apps.posts"
     label = "posts"
     verbose_name = "Posts (feed + share)"
+
+    def ready(self) -> None:
+        # Wires up post_save signal handlers in signals.py
+        from . import signals  # noqa: F401

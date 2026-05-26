@@ -6,3 +6,6 @@ class VotesConfig(AppConfig):
     name = "apps.votes"
     label = "votes"
     verbose_name = "Votes (generic up/down on Post or Comment)"
+
+    def ready(self) -> None:
+        from . import signals  # noqa: F401
