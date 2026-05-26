@@ -4,7 +4,7 @@ A peer-support webapp for adults newly referred or diagnosed with ADHD.
 Built for Imperial College London × Royal College of Art's *Designing for
 Real People* (DRP 2026).
 
-[![CI](https://github.com/REPLACE/REPLACE/actions/workflows/ci.yml/badge.svg)](https://github.com/REPLACE/REPLACE/actions/workflows/ci.yml)
+[![CI](https://github.com/albertding19/DRP/actions/workflows/ci.yml/badge.svg)](https://github.com/albertding19/DRP/actions/workflows/ci.yml)
 
 **Live:** https://drp-web.onrender.com *(once Render deploys; see `render.yaml`)*
 
