@@ -72,6 +72,10 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "django_htmx.middleware.HtmxMiddleware",
+    # Custom: prevents browsers caching HTML so deploy-window 404s don't persist.
+    # Must come BEFORE EnsureNicknameMiddleware so it catches the redirect responses
+    # too (otherwise the cache header is skipped when EnsureNickname short-circuits).
+    "apps.core.middleware.NoCacheHTMLMiddleware",
     # Custom: redirects to /accounts/start/ when no nickname session
     "apps.core.middleware.EnsureNicknameMiddleware",
 ]

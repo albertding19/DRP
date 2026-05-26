@@ -1,9 +1,17 @@
 """Project-wide middleware.
 
-`EnsureNicknameMiddleware` is the gatekeeper that makes the anonymous-nickname
-auth model work: any request that doesn't yet have a `user_id` in the session
-is redirected to `/accounts/start/`. The exempt list covers ops endpoints,
-the picker itself, and static files.
+Two middlewares live here:
+
+- `EnsureNicknameMiddleware`: the gatekeeper that makes the anonymous-nickname
+  auth model work. Any request that doesn't yet have a `user_id` in the session
+  is redirected to `/accounts/start/`. The exempt list covers ops endpoints,
+  the picker itself, and static files.
+
+- `NoCacheHTMLMiddleware`: tells browsers + CDN edges never to cache HTML
+  responses. Without this, transient 404s during Render deploy windows can
+  get cached client-side and persist for minutes after the deploy completes.
+  Static assets (CSS/JS) still get long cache lifetimes via WhiteNoise's
+  hashed filenames — only `text/html` responses are no-stored.
 """
 
 from __future__ import annotations
@@ -49,3 +57,29 @@ class EnsureNicknameMiddleware:
             return redirect("/accounts/start/")
 
         return self.get_response(request)
+
+
+class NoCacheHTMLMiddleware:
+    """Prevent browsers + edges from caching HTML responses.
+
+    Deploy windows on Render's free tier produce brief 404s as the old daphne
+    stops and the new one starts. Without explicit cache headers, browsers
+    cache those transient 404s using their default heuristics and continue
+    serving them after the deploy succeeds.
+
+    Setting `Cache-Control: no-store` on HTML stops this cleanly. Static
+    assets aren't affected — they go through WhiteNoise which sets its own
+    long-lived cache headers on hashed filenames.
+    """
+
+    def __init__(self, get_response: Callable[[HttpRequest], HttpResponse]) -> None:
+        self.get_response = get_response
+
+    def __call__(self, request: HttpRequest) -> HttpResponse:
+        response = self.get_response(request)
+        content_type = response.get("Content-Type", "")
+        if content_type.startswith("text/html"):
+            response["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+            response["Pragma"] = "no-cache"
+            response["Expires"] = "0"
+        return response
