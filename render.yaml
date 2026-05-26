@@ -49,8 +49,10 @@ services:
         value: config.settings.prod
       - key: SECRET_KEY
         generateValue: true
+      # ALLOWED_HOSTS — wildcard-match all Render subdomains. Render also
+      # injects RENDER_EXTERNAL_HOSTNAME, which prod.py reads and appends.
       - key: ALLOWED_HOSTS
-        value: drp-web.onrender.com
+        value: .onrender.com,localhost
       - key: DATABASE_URL
         fromDatabase:
           name: drp-postgres
