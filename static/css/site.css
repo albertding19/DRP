@@ -15,6 +15,32 @@ html {
      pages of differing height. */
   overflow-y: scroll;
   scroll-behavior: smooth;
+  /* Firefox: force the bar to render and pick our colours. */
+  scrollbar-width: auto;
+  scrollbar-color: #b0b4bd #f0f1f3;
+}
+
+/* Custom-styled scrollbars override macOS's "auto-hide" preference, so
+   users without scroll wheels (trackpad-only, tablet, mouse without
+   middle wheel) can grab the thumb to drag. WebKit covers Chrome,
+   Safari, Edge; the Firefox equivalent is the `scrollbar-*` props above. */
+::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+::-webkit-scrollbar-track {
+  background: #f0f1f3;
+}
+::-webkit-scrollbar-thumb {
+  background: #b0b4bd;
+  border: 2px solid #f0f1f3;
+  border-radius: 6px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #8a8f99;
+}
+::-webkit-scrollbar-corner {
+  background: #f0f1f3;
 }
 
 body {
