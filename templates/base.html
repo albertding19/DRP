@@ -1,0 +1,29 @@
+{% load static %}<!doctype html>
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}{{ PROJECT_NAME }}{% endblock %}</title>
+  <link rel="stylesheet" href="{% static 'css/site.css' %}">
+  <script defer src="{% static 'js/htmx.min.js' %}"></script>
+  <script defer src="{% static 'js/alpine.min.js' %}"></script>
+  <script defer src="{% static 'js/realtime.js' %}"></script>
+  {% block head_extra %}{% endblock %}
+</head>
+<body hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
+  <header class="site-header">
+    <a href="/" class="site-brand">{{ PROJECT_NAME }}</a>
+    {% if request.user.is_authenticated %}
+      <span class="site-user">{{ request.user.nickname }}</span>
+    {% endif %}
+  </header>
+
+  <main class="site-main">
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="site-footer">
+    <small>build <code>{{ BUILD_COMMIT }}</code></small>
+  </footer>
+</body>
+</html>

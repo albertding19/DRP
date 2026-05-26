@@ -1,0 +1,57 @@
+# --- Personal scratch ---
+Milestone1_research/
+
+# --- macOS / Windows / Linux junk ---
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+*.egg
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+coverage.xml
+htmlcov/
+.tox/
+
+# --- Virtual envs ---
+.venv/
+venv/
+env/
+.python-version
+
+# --- Django ---
+*.log
+*.pot
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+media/
+staticfiles/
+
+# --- Environment / secrets ---
+.env
+.env.*
+!.env.example
+
+# --- IDE / editor ---
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# --- Node (in case we add JS tooling later) ---
+node_modules/
+npm-debug.log*
+
+# --- Project artifacts ---
+~$*

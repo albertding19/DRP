@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: lint + test + migrate-check
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: pg
+          POSTGRES_PASSWORD: pg
+          POSTGRES_DB: drp_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U pg"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DJANGO_SETTINGS_MODULE: config.settings.test
+      DATABASE_URL: postgres://pg:pg@localhost:5432/drp_test
+      SECRET_KEY: ci-only-not-used-anywhere
+      REDIS_URL: redis://localhost:6379/0  # ignored — test settings use InMemory
+      ALLOWED_HOSTS: "*"
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Ruff lint
+        run: ruff check .
+
+      - name: Ruff format check
+        run: ruff format --check .
+
+      - name: Verify ASGI loads
+        run: python -c "from config.asgi import application; print('asgi ok')"
+
+      - name: Check migrations are up to date
+        run: python manage.py makemigrations --check --dry-run
+
+      - name: Run tests with coverage
+        run: pytest --cov=apps --cov=config --cov-report=term-missing --cov-fail-under=40
+
+      - name: Collect static files (smoke)
+        run: python manage.py collectstatic --noinput

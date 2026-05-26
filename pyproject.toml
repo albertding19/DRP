@@ -1,0 +1,95 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "drp"
+version = "0.1.0"
+description = "DRP — Reddit-style ADHD peer-support app (Imperial College DRP 2026)"
+requires-python = ">=3.12"
+dependencies = [
+    "Django>=5.1,<5.3",
+    "channels>=4.1,<5.0",
+    "channels-redis>=4.2,<5.0",
+    "daphne>=4.1,<5.0",
+    "psycopg[binary]>=3.2,<4.0",
+    "django-environ>=0.11,<0.12",
+    "django-htmx>=1.19,<2.0",
+    "whitenoise>=6.7,<7.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-django>=4.8",
+    "pytest-asyncio>=0.23",
+    "pytest-cov>=5.0",
+    "ruff>=0.5",
+    "factory-boy>=3.3",
+    "coverage>=7.5",
+]
+
+[tool.setuptools]
+packages = ["config", "apps"]
+
+[tool.setuptools.package-dir]
+config = "config"
+apps = "apps"
+
+# ---------------------------------------------------------------------------
+# Ruff (lint + format)
+# ---------------------------------------------------------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+extend-exclude = [
+    "**/migrations/**",
+    "50010_materials/**",
+    "Milestone1_research/**",
+]
+
+[tool.ruff.lint]
+select = [
+    "E", "F", "W",   # pycodestyle / pyflakes
+    "I",             # isort
+    "UP",            # pyupgrade
+    "B",             # flake8-bugbear
+    "DJ",            # flake8-django
+    "C4",            # comprehensions
+    "SIM",           # simplifications
+]
+ignore = [
+    "E501",          # line length handled by formatter
+    "DJ012",         # field/manager order — abstract models legitimately mix these
+]
+
+[tool.ruff.lint.per-file-ignores]
+"**/tests/**" = ["B"]    # pytest fixtures legitimately reuse names
+
+[tool.ruff.format]
+quote-style = "double"
+
+# ---------------------------------------------------------------------------
+# Pytest
+# ---------------------------------------------------------------------------
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "config.settings.test"
+python_files = ["test_*.py", "*_test.py"]
+asyncio_mode = "auto"
+addopts = "-ra --strict-markers --strict-config"
+filterwarnings = [
+    "ignore::DeprecationWarning:django.*",
+]
+
+# ---------------------------------------------------------------------------
+# Coverage
+# ---------------------------------------------------------------------------
+[tool.coverage.run]
+branch = true
+source = ["apps", "config"]
+omit = [
+    "*/migrations/*",
+    "*/tests/*",
+    "manage.py",
+    "config/wsgi.py",
+]

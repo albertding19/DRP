@@ -1,0 +1,7 @@
+{% if state == "available" %}
+  <span class="nickname-state available">✓ <code>{{ nickname }}</code> is available</span>
+{% elif state == "taken" %}
+  <span class="nickname-state taken">✗ taken — try another</span>
+{% elif state == "empty" %}
+  <span class="nickname-state"></span>
+{% endif %}

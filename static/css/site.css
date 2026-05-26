@@ -1,0 +1,80 @@
+/* Minimal styles — placeholder; real design comes after M2. */
+
+:root {
+  --fg: #1a1a1a;
+  --fg-muted: #666;
+  --bg: #fafafa;
+  --accent: #2563eb;
+  --border: #e5e7eb;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--fg);
+  background: var(--bg);
+}
+
+.site-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid var(--border);
+  background: white;
+}
+
+.site-brand {
+  font-weight: 700;
+  text-decoration: none;
+  color: var(--fg);
+}
+
+.site-user {
+  color: var(--fg-muted);
+  font-size: 0.875rem;
+}
+
+.site-main {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem;
+}
+
+.site-footer {
+  text-align: center;
+  padding: 1.5rem;
+  color: var(--fg-muted);
+  font-size: 0.75rem;
+  border-top: 1px solid var(--border);
+  margin-top: 4rem;
+}
+
+.site-footer code {
+  background: #eee;
+  padding: 0.1rem 0.4rem;
+  border-radius: 3px;
+}
+
+a { color: var(--accent); }
+
+input, button, textarea {
+  font: inherit;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: white;
+}
+
+button {
+  cursor: pointer;
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+}
+
+button:hover { opacity: 0.9; }

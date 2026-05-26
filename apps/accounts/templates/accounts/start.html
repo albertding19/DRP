@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+
+{% block title %}Pick a nickname — {{ PROJECT_NAME }}{% endblock %}
+
+{% block content %}
+<section class="picker">
+  <h1>Welcome.</h1>
+  <p>Pick a nickname — it's all we need.</p>
+
+  <form method="post" class="picker-form">
+    {% csrf_token %}
+    <input type="hidden" name="next" value="{{ next }}">
+
+    <label for="id_nickname" class="visually-hidden">Nickname</label>
+    {{ form.nickname }}
+
+    <div
+      id="nickname-check"
+      hx-post="{% url 'accounts:check_nickname' %}"
+      hx-trigger="input from:#id_nickname delay:300ms"
+      hx-include="#id_nickname"
+      hx-swap="innerHTML"
+      aria-live="polite"
+    ></div>
+
+    {% if form.nickname.errors %}
+      <div class="form-error">
+        {{ form.nickname.errors.0 }}
+      </div>
+    {% endif %}
+
+    <button type="submit">Continue</button>
+  </form>
+
+  <p class="picker-fineprint">
+    No email, no password. You can change this later if you want.
+  </p>
+</section>
+{% endblock %}
+
+{% block head_extra %}
+<style>
+  .picker { max-width: 360px; margin: 4rem auto; }
+  .picker h1 { margin-bottom: 0.25rem; }
+  .picker-form { display: grid; gap: 0.75rem; margin-top: 1.5rem; }
+  .picker-form input { font-size: 1.125rem; }
+  .picker-fineprint { color: var(--fg-muted); font-size: 0.875rem; margin-top: 1rem; }
+  .form-error { color: #c00; font-size: 0.875rem; }
+  .nickname-state { font-size: 0.875rem; color: var(--fg-muted); }
+  .nickname-state.available { color: #16a34a; }
+  .nickname-state.taken { color: #c00; }
+  .visually-hidden {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+  }
+</style>
+{% endblock %}

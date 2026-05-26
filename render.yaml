@@ -1,0 +1,65 @@
+# Render blueprint — provisions web + Postgres + Redis from one file.
+#
+# Usage:
+#   1. Push to GitHub
+#   2. On Render: New → Blueprint → connect repo
+#   3. Render reads this file and provisions everything
+#
+# Free-tier caveats:
+#   - Web service sleeps after ~15 min idle (cold start ~30s)
+#   - Postgres free tier expires after 90 days; renew or upgrade
+#   - Region: `frankfurt` — closest to London for low latency
+#
+# Cold-start mitigation for the M2 demo: point UptimeRobot at /healthz
+# 30 min before the slot.
+
+databases:
+  - name: drp-postgres
+    plan: free
+    region: frankfurt
+    databaseName: drp
+    user: drp
+
+services:
+  # Redis for Django Channels' channel layer
+  - type: redis
+    name: drp-redis
+    plan: free
+    region: frankfurt
+    ipAllowList: []  # private network only — only the web service can reach it
+    maxmemoryPolicy: allkeys-lru
+
+  # The Django app (Daphne serves HTTP + WS in one process)
+  - type: web
+    name: drp-web
+    runtime: python
+    plan: free
+    region: frankfurt
+    branch: main
+    autoDeploy: true
+    buildCommand: |
+      pip install --upgrade pip
+      pip install -e .
+      python manage.py collectstatic --noinput
+      python manage.py migrate --noinput
+    startCommand: daphne -b 0.0.0.0 -p $PORT config.asgi:application
+    healthCheckPath: /healthz
+    envVars:
+      - key: DJANGO_SETTINGS_MODULE
+        value: config.settings.prod
+      - key: SECRET_KEY
+        generateValue: true
+      - key: ALLOWED_HOSTS
+        value: drp-web.onrender.com
+      - key: DATABASE_URL
+        fromDatabase:
+          name: drp-postgres
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: drp-redis
+          property: connectionString
+      - key: DEBUG
+        value: "False"
+      # RENDER_GIT_COMMIT is auto-injected by Render at build time
