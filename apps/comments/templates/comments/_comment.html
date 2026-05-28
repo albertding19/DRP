@@ -13,18 +13,12 @@ Two Reddit-style behaviours:
 <article
   class="comment comment-clickable {% if comment.parent_id %}comment-reply{% endif %}"
   id="c{{ comment.id }}"
-  x-data="{ collapsed: false, showReply: false }"
-  data-permalink="{% url 'comments:permalink' post_pk=post.id comment_pk=comment.id %}"
-  x-on:click="
-    /* Don't hijack clicks on inner interactive elements — buttons, links,
-       forms, text inputs, labels all handle themselves. */
-    if ($event.target.closest('button, a, form, textarea, input, label')) return;
-    /* Don't navigate while the user is highlighting text in the body. */
+  x-data="{ collapsed: false, showReply: false, permalink: '{% url 'comments:permalink' post_pk=post.id comment_pk=comment.id %}' }"
+  x-on:click.stop="
+    if (event.target.closest('button, a, form, textarea, input, label')) return;
     if (window.getSelection && window.getSelection().toString()) return;
-    /* No-op if we're already viewing this comment's permalink. */
-    const target = $el.dataset.permalink;
-    if (window.location.pathname === target) return;
-    window.location = target;
+    if (window.location.pathname === permalink) return;
+    window.location.href = permalink;
   "
 >
   <header class="comment-header">
