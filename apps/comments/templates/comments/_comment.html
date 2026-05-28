@@ -16,13 +16,6 @@ Two Reddit-style behaviours:
   x-data="{ collapsed: false, showReply: false }"
 >
   <header class="comment-header">
-    <button
-      type="button"
-      class="comment-collapse"
-      x-on:click="collapsed = !collapsed"
-      :aria-label="collapsed ? 'Expand comment' : 'Collapse comment'"
-      :aria-expanded="(!collapsed).toString()"
-    ><span x-text="collapsed ? '[+]' : '[−]'">[−]</span></button>
     <span class="comment-author">{{ comment.author.nickname|default:"[deleted]" }}</span>
     <a
       href="{% url 'comments:permalink' post_pk=post.id comment_pk=comment.id %}"
@@ -37,6 +30,14 @@ Two Reddit-style behaviours:
         {% endif %}
       {% endwith %}
     {% endif %}
+    <button
+      type="button"
+      class="comment-collapse"
+      :class="collapsed ? 'is-collapsed' : ''"
+      x-on:click="collapsed = !collapsed"
+      :aria-label="collapsed ? 'Expand comment' : 'Collapse comment'"
+      :aria-expanded="(!collapsed).toString()"
+    >▾</button>
   </header>
 
   <div x-show="!collapsed" x-cloak>
