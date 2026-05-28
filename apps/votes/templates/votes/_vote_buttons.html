@@ -13,7 +13,12 @@ template tag-free heuristic below.
 
 {% load votes_extras %}
 
-{% with current_score=score|default_if_none:target.score user_v=user_vote|default_if_none:0 %}
+{# Resolve current user's vote when the parent didn't pass one (feed/detail
+   includes). The HTMX cast_vote response always passes `user_vote`, so the
+   `default_if_none` chain prefers that and only falls back to the tag's
+   per-target lookup. #}
+{% user_vote_for target as computed_user_vote %}
+{% with current_score=score|default_if_none:target.score user_v=user_vote|default_if_none:computed_user_vote %}
 <form
   class="vote-buttons"
   hx-post="{% url 'votes:cast' target_type=target_type object_id=target.id %}"
