@@ -6,6 +6,7 @@ import pytest
 from django.test import Client
 
 from apps.accounts.models import User
+from apps.comments.models import Comment
 from apps.posts.models import Post
 
 
@@ -57,4 +58,32 @@ class TestCastView:
     def test_post_not_found_404(self, authed_client) -> None:
         client, _ = authed_client
         response = client.post("/vote/post/9999/", {"value": "1"})
+        assert response.status_code == 404
+
+    def test_upvote_comment(self, authed_client, post: Post) -> None:
+        """Voting on a comment hits the same endpoint with target_type='comment'."""
+        client, _ = authed_client
+        author = User.objects.create_anonymous(nickname="commentauth")
+        c = Comment.objects.create(author=author, post=post, body="reply-worthy")
+        response = client.post(f"/vote/comment/{c.pk}/", {"value": "1"})
+        assert response.status_code == 200
+        c.refresh_from_db()
+        assert c.score == 1
+        # The returned partial is the compact horizontal variant.
+        assert b"vote-buttons-inline" in response.content
+        assert b"data-score-comment-" in response.content
+
+    def test_retract_comment_vote(self, authed_client, post: Post) -> None:
+        """Same value twice retracts (score back to 0)."""
+        client, _ = authed_client
+        author = User.objects.create_anonymous(nickname="commentauth2")
+        c = Comment.objects.create(author=author, post=post, body="x")
+        client.post(f"/vote/comment/{c.pk}/", {"value": "1"})
+        client.post(f"/vote/comment/{c.pk}/", {"value": "1"})
+        c.refresh_from_db()
+        assert c.score == 0
+
+    def test_comment_not_found_404(self, authed_client) -> None:
+        client, _ = authed_client
+        response = client.post("/vote/comment/9999/", {"value": "1"})
         assert response.status_code == 404

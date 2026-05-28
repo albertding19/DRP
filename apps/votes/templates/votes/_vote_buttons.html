@@ -28,7 +28,7 @@ becomes `''` (not `None`) in Django's template context.
 {% endcomment %}
 {% with current_score=target.score user_v=user_vote|default_if_none:computed_user_vote %}
 <form
-  class="vote-buttons"
+  class="vote-buttons {% if target_type == 'comment' %}vote-buttons-inline{% endif %}"
   hx-post="{% url 'votes:cast' target_type=target_type object_id=target.id %}"
   hx-target="this"
   hx-swap="outerHTML"
@@ -69,4 +69,10 @@ becomes `''` (not `None`) in Django's template context.
   .vote-buttons .vote-score { display: block; font-size: 1.25rem; font-weight: 700; color: var(--fg); text-align: center; line-height: 1.1; font-variant-numeric: tabular-nums; min-height: 1.4rem; }
   .vote-buttons .vote-score.voted-up { color: #2563eb; }
   .vote-buttons .vote-score.voted-down { color: #c00; }
+
+  /* Compact horizontal variant — used for comments. No outer pill chrome
+     because it sits inside the comment's footer next to Reply/Delete. */
+  .vote-buttons.vote-buttons-inline { flex-direction: row; align-items: center; gap: 0.1rem; padding: 0; background: transparent; border: 0; min-width: 0; }
+  .vote-buttons.vote-buttons-inline button { padding: 0.1rem 0.35rem; font-size: 0.95rem; }
+  .vote-buttons.vote-buttons-inline .vote-score { display: inline-block; font-size: 0.9rem; min-height: auto; padding: 0 0.25rem; line-height: 1; }
 </style>

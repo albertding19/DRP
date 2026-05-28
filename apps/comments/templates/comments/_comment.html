@@ -50,6 +50,7 @@ Two Reddit-style behaviours:
     <div class="comment-body">{{ comment.body|linebreaksbr }}</div>
 
     <footer class="comment-footer">
+      {% include "votes/_vote_buttons.html" with target=comment target_type="comment" %}
       {% if not comment.parent_id %}
         <button
           type="button"
