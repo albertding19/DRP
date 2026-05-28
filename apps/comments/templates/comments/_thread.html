@@ -37,7 +37,11 @@ Context: { post }
   .comment-form { margin-bottom: 1.5rem; display: grid; gap: 0.5rem; }
   .comment-form textarea { width: 100%; font: inherit; padding: 0.5rem; border: 1px solid var(--border); border-radius: 6px; }
   .comment-thread { display: grid; gap: 1rem; }
-  .comment { padding: 0.75rem 1rem; background: white; border: 1px solid var(--border); border-radius: 6px; }
+  .comment { padding: 0.75rem 1rem; background: white; border: 1px solid var(--border); border-radius: 6px; transition: border-color 80ms, box-shadow 80ms; }
+  /* Whole box is a permalink — give it a click affordance. Inner buttons /
+     links / textareas stop the propagation in the Alpine click handler. */
+  .comment-clickable { cursor: pointer; }
+  .comment-clickable:hover { border-color: var(--accent); box-shadow: 0 1px 3px rgba(37, 99, 235, 0.08); }
   .comment-reply { background: #fafafa; margin-left: 1.5rem; border-left: 3px solid var(--border); }
   .comment-deleted { color: var(--fg-muted); font-style: italic; padding: 0.5rem 1rem; }
   .comment-header { display: flex; align-items: center; gap: 0.5rem; font-size: 0.8rem; color: var(--fg-muted); margin-bottom: 0.25rem; }
