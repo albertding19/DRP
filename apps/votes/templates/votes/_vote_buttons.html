@@ -20,7 +20,13 @@ includes). The HTMX cast_vote response always passes `user_vote`, so the
 per-target lookup.
 {% endcomment %}
 {% user_vote_for target as computed_user_vote %}
-{% with current_score=score|default_if_none:target.score user_v=user_vote|default_if_none:computed_user_vote %}
+{% comment %}
+`target.score` is the source of truth — the cast_vote view refreshes it from
+DB before returning the HTMX partial, so it's always current. Resolving via
+`score|default_if_none:` doesn't work because an unpassed `score` variable
+becomes `''` (not `None`) in Django's template context.
+{% endcomment %}
+{% with current_score=target.score user_v=user_vote|default_if_none:computed_user_vote %}
 <form
   class="vote-buttons"
   hx-post="{% url 'votes:cast' target_type=target_type object_id=target.id %}"
@@ -60,7 +66,7 @@ per-target lookup.
   .vote-buttons button:hover { background: rgba(0,0,0,0.06); color: var(--fg); }
   .vote-buttons .vote-up.active { color: #2563eb; background: rgba(37, 99, 235, 0.12); }
   .vote-buttons .vote-down.active { color: #c00; background: rgba(204, 0, 0, 0.10); }
-  .vote-buttons .vote-score { font-size: 1.25rem; font-weight: 700; color: var(--fg); text-align: center; line-height: 1.1; font-variant-numeric: tabular-nums; }
+  .vote-buttons .vote-score { display: block; font-size: 1.25rem; font-weight: 700; color: var(--fg); text-align: center; line-height: 1.1; font-variant-numeric: tabular-nums; min-height: 1.4rem; }
   .vote-buttons .vote-score.voted-up { color: #2563eb; }
   .vote-buttons .vote-score.voted-down { color: #c00; }
 </style>
