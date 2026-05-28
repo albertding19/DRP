@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+
+{% block title %}Comment by {{ comment.author.nickname|default:"[deleted]" }} on {{ post.title }} — {{ PROJECT_NAME }}{% endblock %}
+
+{% block content %}
+<section
+  class="comment-permalink comments"
+  x-data
+  x-init="$store.ws && $store.ws.connect('/ws/posts/{{ post.id }}/')"
+  x-on:ws:comment_created.window="
+    /* If a new reply for THIS comment arrives, append it; otherwise ignore. */
+    const payload = event.detail;
+    if (!payload || !payload.html) return;
+    if (payload.parent_id === {{ comment.id }}) {
+      const replies = document.getElementById('replies-{{ comment.id }}');
+      if (replies) replies.insertAdjacentHTML('beforeend', payload.html);
+    }
+  "
+>
+  <a
+    href="{% url 'posts:detail' pk=post.id %}#c{{ comment.id }}"
+    class="back-link"
+  >← Back to full thread</a>
+
+  <header class="permalink-post-header">
+    <span class="post-card-type post-card-type-{{ post.post_type }}">
+      {{ post.get_post_type_display }}
+    </span>
+    <h1 class="permalink-post-title">
+      <a href="{% url 'posts:detail' pk=post.id %}">{{ post.title }}</a>
+    </h1>
+    <p class="post-detail-meta">
+      by {{ post.author.nickname|default:"[deleted]" }}
+      ·
+      {{ post.created_at|date:"j M Y, H:i" }}
+    </p>
+  </header>
+
+  {% if comment.parent_id %}
+    <p class="permalink-context-note">
+      This is a reply.
+      <a href="{% url 'comments:permalink' post_pk=post.id comment_pk=comment.parent_id %}"
+        >See parent thread →</a>
+    </p>
+  {% endif %}
+
+  <div class="comment-thread">
+    {% include "comments/_comment.html" with comment=comment post=post thread_root=True %}
+  </div>
+</section>
+
+<style>
+  /* Mirror the comment-thread styles from comments/_thread.html so the
+     permalink page renders identical comment widgets without needing to
+     include the full thread template (which would re-iterate every comment). */
+  [x-cloak] { display: none !important; }
+  .comment-permalink { display: grid; gap: 1.25rem; }
+  .back-link { color: var(--fg-muted); text-decoration: none; font-size: 0.875rem; }
+  .back-link:hover { color: var(--accent); }
+  .permalink-post-header { display: grid; gap: 0.4rem; padding: 0.75rem 1rem; background: white; border: 1px solid var(--border); border-radius: 8px; }
+  .permalink-post-title { font-size: 1.1rem; margin: 0; }
+  .permalink-post-title a { color: var(--fg); text-decoration: none; }
+  .permalink-post-title a:hover { color: var(--accent); }
+  .post-card-type { display: inline-block; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; padding: 0.15rem 0.5rem; border-radius: 3px; }
+  .post-card-type-problem { background: #fef3c7; color: #92400e; }
+  .post-card-type-strategy { background: #dcfce7; color: #166534; }
+  .post-detail-meta { color: var(--fg-muted); font-size: 0.875rem; margin: 0; }
+  .permalink-context-note { font-size: 0.875rem; color: var(--fg-muted); margin: 0; padding: 0.5rem 0.75rem; background: #f7f8fa; border-left: 3px solid var(--accent); border-radius: 4px; }
+  .permalink-context-note a { text-decoration: none; }
+  .permalink-context-note a:hover { text-decoration: underline; }
+
+  .comment-thread { display: grid; gap: 1rem; }
+  .comment { padding: 0.75rem 1rem; background: white; border: 1px solid var(--border); border-radius: 6px; }
+  .comment-reply { background: #fafafa; margin-left: 1.5rem; border-left: 3px solid var(--border); }
+  .comment-deleted { color: var(--fg-muted); font-style: italic; padding: 0.5rem 1rem; }
+  .comment-header { display: flex; align-items: baseline; gap: 0.5rem; font-size: 0.8rem; color: var(--fg-muted); margin-bottom: 0.25rem; }
+  .comment-collapse { background: transparent; border: 0; padding: 0; cursor: pointer; color: var(--fg-muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.85rem; line-height: 1; }
+  .comment-collapse:hover { color: var(--accent); }
+  .comment-author { font-weight: 600; color: var(--fg); }
+  .comment-time { color: var(--fg-muted); text-decoration: none; }
+  .comment-time:hover { color: var(--accent); text-decoration: underline; }
+  .comment-collapsed-meta { font-style: italic; }
+  .comment-body { white-space: pre-wrap; }
+  .comment-footer { margin-top: 0.5rem; display: flex; gap: 0.5rem; }
+  .comment-action { background: transparent; border: 0; color: var(--fg-muted); padding: 0.1rem 0.25rem; cursor: pointer; font-size: 0.8rem; text-decoration: none; }
+  .comment-action:hover { color: var(--accent); }
+  .comment-action-danger:hover { color: #c00; }
+  .comment-delete-form { display: inline; margin: 0; padding: 0; }
+  .comment-reply-form { margin-top: 0.5rem; display: grid; gap: 0.5rem; }
+  .comment-reply-form textarea { width: 100%; font: inherit; padding: 0.5rem; border: 1px solid var(--border); border-radius: 6px; }
+  .comment-replies { margin-top: 0.75rem; display: grid; gap: 0.75rem; }
+  .btn-sm { padding: 0.25rem 0.75rem; font-size: 0.85rem; }
+</style>
+{% endblock %}

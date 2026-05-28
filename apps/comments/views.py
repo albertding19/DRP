@@ -12,7 +12,7 @@ from django.core.exceptions import ValidationError
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_GET, require_POST
 
 from apps.posts.models import Post
 
@@ -89,6 +89,32 @@ def delete(request: HttpRequest, comment_pk: int) -> HttpResponse:
         # itself but stays in the thread (preserves parent/reply context).
         return render(request, "comments/_comment_deleted.html", {"comment": comment})
     return redirect(reverse("posts:detail", args=[comment.post_id]))
+
+
+@require_GET
+def permalink(request: HttpRequest, post_pk: int, comment_pk: int) -> HttpResponse:
+    """Reddit-style single-comment view.
+
+    Renders the post header plus exactly one comment (and its replies, if it
+    is a top-level comment — with our one-level nesting, a reply has no
+    descendants of its own). The comment ID is the page's focus; the parent
+    thread can be reached via the "back to full thread" link.
+
+    404s on missing post/comment, deleted post/comment, or mismatched
+    (comment-belongs-to-different-post) requests.
+    """
+    post = get_object_or_404(Post, pk=post_pk, is_deleted=False)
+    comment = get_object_or_404(
+        Comment.objects.select_related("author").prefetch_related("replies__author"),
+        pk=comment_pk,
+        post=post,
+        is_deleted=False,
+    )
+    return render(
+        request,
+        "comments/permalink.html",
+        {"post": post, "comment": comment},
+    )
 
 
 def _redirect_with_error(request, post, form_or_errors):  # type: ignore[no-untyped-def]
