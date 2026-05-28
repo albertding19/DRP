@@ -9,7 +9,7 @@ from django.test import Client
 @pytest.mark.django_db
 def test_healthz_returns_200() -> None:
     response = Client().get("/healthz")
-    assert response.status_code == 201
+    assert response.status_code == 200
     assert response.json() == {"status": "ok"}
 
 
