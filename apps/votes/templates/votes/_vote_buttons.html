@@ -37,7 +37,10 @@ per-target lookup.
     aria-label="Upvote"
     title="Upvote"
   >▲</button>
-  <span class="vote-score" data-score-{{ target_type }}-{{ target.id }}>{{ current_score }}</span>
+  <span
+    class="vote-score {% if user_v == 1 %}voted-up{% elif user_v == -1 %}voted-down{% endif %}"
+    data-score-{{ target_type }}-{{ target.id }}
+  >{{ current_score }}</span>
   <button
     type="submit"
     name="value"
@@ -50,10 +53,14 @@ per-target lookup.
 {% endwith %}
 
 <style>
-  .vote-buttons { display: inline-flex; flex-direction: column; align-items: center; gap: 0.15rem; padding: 0; margin: 0; border: 0; background: transparent; }
-  .vote-buttons button { background: transparent; border: 1px solid transparent; color: var(--fg-muted); cursor: pointer; padding: 0.1rem 0.4rem; font-size: 1rem; line-height: 1; border-radius: 3px; }
-  .vote-buttons button:hover { background: rgba(0,0,0,0.04); color: var(--fg); }
-  .vote-buttons .vote-up.active { color: #2563eb; }
-  .vote-buttons .vote-down.active { color: #c00; }
-  .vote-buttons .vote-score { font-size: 0.875rem; font-weight: 600; color: var(--fg-muted); min-width: 1.5rem; text-align: center; }
+  /* Reddit-style pill: large, padded, rounded, with the score number front-
+     and-centre between the arrows. The whole control reads as one widget. */
+  .vote-buttons { display: inline-flex; flex-direction: column; align-items: stretch; gap: 0.25rem; padding: 0.5rem 0.4rem; margin: 0; border: 1px solid var(--border); border-radius: 10px; background: #f7f8fa; min-width: 3.25rem; }
+  .vote-buttons button { background: transparent; border: 0; color: var(--fg-muted); cursor: pointer; padding: 0.2rem 0.4rem; font-size: 1.15rem; line-height: 1; border-radius: 6px; transition: background 80ms, color 80ms; }
+  .vote-buttons button:hover { background: rgba(0,0,0,0.06); color: var(--fg); }
+  .vote-buttons .vote-up.active { color: #2563eb; background: rgba(37, 99, 235, 0.12); }
+  .vote-buttons .vote-down.active { color: #c00; background: rgba(204, 0, 0, 0.10); }
+  .vote-buttons .vote-score { font-size: 1.25rem; font-weight: 700; color: var(--fg); text-align: center; line-height: 1.1; font-variant-numeric: tabular-nums; }
+  .vote-buttons .vote-score.voted-up { color: #2563eb; }
+  .vote-buttons .vote-score.voted-down { color: #c00; }
 </style>
