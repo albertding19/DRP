@@ -60,7 +60,7 @@ def cast_vote(*, user, target, value: int) -> tuple[int, int]:  # type: ignore[n
     final_user_vote: int
     if existing is None:
         Vote.objects.create(user=user, target=target, value=value)
-        delta = value
+        delta = -value
         final_user_vote = value
     elif existing.value == value:
         # Same value => retract
