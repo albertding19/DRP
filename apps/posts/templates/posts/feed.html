@@ -27,7 +27,7 @@
       <h1>#{{ filtered_tag.name }}</h1>
       <a href="{% url 'posts:feed' %}" class="filter-clear">× clear filter</a>
     {% else %}
-      <h1>Strategies &amp; problems</h1>
+      <h1>Strategies and problems</h1>
     {% endif %}
     <nav class="feed-sort">
       <a href="?sort=new" class="{% if sort == 'new' %}active{% endif %}">New</a>
