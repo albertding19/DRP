@@ -65,7 +65,7 @@ def cast_vote(*, user, target, value: int) -> tuple[int, int]:  # type: ignore[n
     elif existing.value == value:
         # Same value => retract
         existing.delete()
-        delta = -value
+        delta = value
         final_user_vote = 0
     else:
         # Different value => change. Delta = new - old.
