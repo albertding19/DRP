@@ -12,6 +12,20 @@
 #
 # Cold-start mitigation for the M2 demo: point UptimeRobot at /healthz
 # 30 min before the slot.
+#
+# Preview environments: every PR opened against `main` gets its own
+# auto-deployed environment at `drp-web-pr-<n>.onrender.com` for review,
+# then is torn down after 7 days of PR inactivity. See the `previews`
+# block below.
+
+previews:
+  # Auto-create a preview environment for every PR opened on this repo.
+  # The PR's branch is deployed to a temporary `*.onrender.com` URL; Render
+  # comments the URL on the GitHub PR so reviewers can poke it live.
+  generation: automatic
+  # Idle previews are deleted after 7 days to keep the workspace tidy and
+  # stop free-tier services from sleeping forever on stale PRs.
+  expireAfterDays: 7
 
 databases:
   - name: drp-postgres
