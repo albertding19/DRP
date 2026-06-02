@@ -23,7 +23,7 @@ from __future__ import annotations
 
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 
-from .groups import FEED_GROUP, post_group
+from .groups import FEED_GROUP, matchmaking_group, post_group
 
 
 class FeedConsumer(AsyncJsonWebsocketConsumer):
@@ -77,3 +77,37 @@ class PostConsumer(AsyncJsonWebsocketConsumer):
 
     async def post_hidden(self, event: dict) -> None:
         await self.send_json({"type": "post_hidden", "payload": event["payload"]})
+
+
+class MatchmakingConsumer(AsyncJsonWebsocketConsumer):
+    """Per-user channel for body-double matchmaking notifications.
+
+    The waiting page connects to `/ws/matchmaking/<user_id>/` and listens
+    for a single event type — `match_found` — which carries the URL the
+    client should redirect to.
+
+    Authorisation: trusts the URL kwarg. In a hostile threat model we'd
+    cross-check `self.scope["user"]`, but the same nickname-based auth
+    invariants from the rest of the app apply: room access is gated by
+    the room view's participant check, so the worst a forged WS gives
+    you is the knowledge that someone with that user_id got matched,
+    not the room itself.
+    """
+
+    async def connect(self) -> None:
+        try:
+            self.user_id = int(self.scope["url_route"]["kwargs"]["user_id"])
+        except (KeyError, ValueError, TypeError):
+            await self.close(code=4000)
+            return
+        self.group = matchmaking_group(self.user_id)
+        await self.channel_layer.group_add(self.group, self.channel_name)
+        await self.accept()
+
+    async def disconnect(self, code: int) -> None:  # noqa: ARG002
+        group = getattr(self, "group", None)
+        if group:
+            await self.channel_layer.group_discard(group, self.channel_name)
+
+    async def match_found(self, event: dict) -> None:
+        await self.send_json({"type": "match_found", "payload": event["payload"]})

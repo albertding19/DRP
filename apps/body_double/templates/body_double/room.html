@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+
+{% block title %}Body double session — {{ PROJECT_NAME }}{% endblock %}
+
+{% block content %}
+<section class="body-double-room">
+  <header class="room-header">
+    <h1>Body double session</h1>
+    <p class="room-meta">
+      with <strong>{% if session.user_a_id == request.user.id %}{{ session.user_b.nickname }}{% else %}{{ session.user_a.nickname }}{% endif %}</strong>
+    </p>
+  </header>
+
+  <div id="participants" class="participants" aria-live="polite"></div>
+
+  <div id="local-controls" class="controls">
+    <button id="toggle-mic" type="button" class="btn btn-secondary">🎤 Mute</button>
+    <button id="toggle-cam" type="button" class="btn btn-secondary">📷 Camera off</button>
+    <form id="end-form" method="post" action="{% url 'body_double:end' session_id=session.id %}" style="display:inline">
+      {% csrf_token %}
+      <button id="leave" type="submit" class="btn btn-danger">End session</button>
+    </form>
+  </div>
+
+  <p id="status" class="status" aria-live="polite">Connecting…</p>
+</section>
+
+<script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
+<script>
+(async () => {
+  const wsUrl = "{{ ws_url }}";
+  const token = "{{ token }}";
+  const statusEl = document.getElementById("status");
+  const participantsEl = document.getElementById("participants");
+  const setStatus = (s) => { statusEl.textContent = s; };
+
+  if (!wsUrl) {
+    setStatus("Video service not configured. Ask an admin to set LIVEKIT_URL.");
+    return;
+  }
+  if (typeof LivekitClient === "undefined") {
+    setStatus("Couldn't load the video library. Try refreshing.");
+    return;
+  }
+
+  const room = new LivekitClient.Room({
+    adaptiveStream: true,
+    dynacast: true,
+  });
+
+  /* Render a remote participant's audio + video tracks. */
+  const attachTrack = (track, participantId) => {
+    let card = document.getElementById("p-" + participantId);
+    if (!card) {
+      card = document.createElement("div");
+      card.id = "p-" + participantId;
+      card.className = "participant-card";
+      const label = document.createElement("p");
+      label.className = "participant-label";
+      label.textContent = participantId;
+      card.appendChild(label);
+      participantsEl.appendChild(card);
+    }
+    const el = track.attach();
+    el.classList.add("participant-track");
+    card.appendChild(el);
+  };
+
+  room
+    .on(LivekitClient.RoomEvent.TrackSubscribed, (track, _pub, participant) => {
+      attachTrack(track, participant.identity);
+    })
+    .on(LivekitClient.RoomEvent.TrackUnsubscribed, (track) => track.detach())
+    .on(LivekitClient.RoomEvent.ParticipantDisconnected, (participant) => {
+      const card = document.getElementById("p-" + participant.identity);
+      if (card) card.remove();
+      setStatus("Your body double left the session.");
+    })
+    .on(LivekitClient.RoomEvent.Disconnected, () => {
+      setStatus("Disconnected.");
+    });
+
+  try {
+    await room.connect(wsUrl, token);
+    setStatus("Connected.");
+    await room.localParticipant.enableCameraAndMicrophone();
+  } catch (err) {
+    console.error("LiveKit connect failed:", err);
+    setStatus("Couldn't connect. " + (err.message || ""));
+    return;
+  }
+
+  /* Mute / camera toggles. */
+  document.getElementById("toggle-mic").addEventListener("click", async (e) => {
+    const enabled = !room.localParticipant.isMicrophoneEnabled;
+    await room.localParticipant.setMicrophoneEnabled(enabled);
+    e.target.textContent = enabled ? "🎤 Mute" : "🔇 Unmute";
+  });
+  document.getElementById("toggle-cam").addEventListener("click", async (e) => {
+    const enabled = !room.localParticipant.isCameraEnabled;
+    await room.localParticipant.setCameraEnabled(enabled);
+    e.target.textContent = enabled ? "📷 Camera off" : "📷 Camera on";
+  });
+
+  /* When user clicks "End session", disconnect from LiveKit first then
+     submit the end-session form so the server marks the session ended. */
+  document.getElementById("end-form").addEventListener("submit", (e) => {
+    try { room.disconnect(); } catch (_) { /* ignore */ }
+  });
+})();
+</script>
+
+<style>
+  .body-double-room { max-width: 900px; margin: 0 auto; padding: 1rem 0; }
+  .room-header { display: flex; align-items: baseline; gap: 1rem; margin-bottom: 1.5rem; }
+  .room-header h1 { margin: 0; font-size: 1.5rem; }
+  .room-meta { color: var(--fg-muted); margin: 0; }
+  .participants { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; background: #111; border-radius: 12px; padding: 1rem; min-height: 360px; }
+  .participant-card { position: relative; background: #000; border-radius: 8px; overflow: hidden; aspect-ratio: 16/9; }
+  .participant-label { position: absolute; bottom: 0.5rem; left: 0.75rem; color: white; background: rgba(0,0,0,0.5); padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.8rem; margin: 0; z-index: 1; }
+  .participant-track { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .controls { display: flex; gap: 0.5rem; align-items: center; margin: 1.25rem 0; flex-wrap: wrap; }
+  .btn-danger { background: #c00; color: white; border-color: #c00; padding: 0.5rem 1.25rem; border-radius: 6px; cursor: pointer; }
+  .btn-danger:hover { opacity: 0.9; }
+  .status { font-size: 0.875rem; color: var(--fg-muted); margin: 0.5rem 0; }
+</style>
+{% endblock %}

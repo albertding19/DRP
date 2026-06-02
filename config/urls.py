@@ -33,6 +33,7 @@ urlpatterns = [
     path("", include("apps.votes.urls")),
     path("tags/", include("apps.tags.urls")),
     path("search/", include("apps.search.urls")),
+    path("body-double/", include("apps.body_double.urls")),
     # ---- admin ----
     path("admin/", admin.site.urls),
 ]

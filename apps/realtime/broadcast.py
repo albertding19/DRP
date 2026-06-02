@@ -90,3 +90,26 @@ def broadcast_post_hidden(post) -> None:  # noqa: ANN001
     payload = {"id": post.id}
     _send(FEED_GROUP, "post_hidden", payload)
     _send(post_group(post.id), "post_hidden", payload)
+
+
+def broadcast_match_found(*, notify_user_id: int, session) -> None:  # noqa: ANN001
+    """Push a `match_found` event to `notify_user_id`'s matchmaking group.
+
+    Used by body-double services when a waiting user gets paired with
+    someone who just entered the pool. The receiving WS client redirects
+    to the call page.
+
+    `notify_user_id` is intentionally the partner — the user who just
+    enqueued is about to be redirected by their own POST response, so
+    they don't need a WS push.
+    """
+    from .groups import matchmaking_group
+
+    _send(
+        matchmaking_group(notify_user_id),
+        "match_found",
+        {
+            "session_id": session.id,
+            "room_url": f"/body-double/room/{session.id}/",
+        },
+    )

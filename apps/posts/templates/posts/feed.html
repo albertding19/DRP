@@ -40,6 +40,7 @@
       <a href="?sort=hot" class="{% if sort == 'hot' %}active{% endif %}">Hot</a>
     </nav>
     <a href="{% url 'tags:list' %}" class="btn btn-secondary">Tags</a>
+    <a href="{% url 'body_double:index' %}" class="btn btn-secondary">🤝 Body double</a>
     <a href="{% url 'posts:create' %}" class="btn btn-primary">+ Share</a>
   </header>
 

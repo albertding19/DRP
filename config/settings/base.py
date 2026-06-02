@@ -58,6 +58,7 @@ INSTALLED_APPS = [
     "apps.search",
     "apps.realtime",
     "apps.moderation",
+    "apps.body_double",
 ]
 
 # ---------------------------------------------------------------------------
@@ -182,3 +183,34 @@ MODERATION_CLAUDE_MODEL = env("MODERATION_CLAUDE_MODEL", default="claude-haiku-4
 # Hard timeout in seconds for the Claude API call before we give up and
 # pass the content through.
 MODERATION_CLAUDE_TIMEOUT_S = env.float("MODERATION_CLAUDE_TIMEOUT_S", default=3.0)
+
+# ---------------------------------------------------------------------------
+# Body-double matchmaking
+# ---------------------------------------------------------------------------
+# Pluggable matching strategy. The default is first-in-first-out pairing.
+# Future variants (tag-filtered, blocklist-aware, Pomodoro-length) implement
+# `apps.body_double.matching.base.MatchingStrategy` and are selected by
+# setting this env var to a different dotted path.
+BODY_DOUBLE_MATCHING_STRATEGY = env(
+    "BODY_DOUBLE_MATCHING_STRATEGY",
+    default="apps.body_double.matching.fifo.FIFOStrategy",
+)
+
+# Pluggable video provider. Same shape as the matching strategy.
+BODY_DOUBLE_VIDEO_PROVIDER = env(
+    "BODY_DOUBLE_VIDEO_PROVIDER",
+    default="apps.body_double.video.livekit.LiveKitProvider",
+)
+
+# How long an unmatched ticket stays in the pool before a periodic cleanup
+# (M3 work) expires it. Configurable so M3/M4 iteration can tune without
+# redeploys.
+BODY_DOUBLE_WAIT_TIMEOUT_S = env.int("BODY_DOUBLE_WAIT_TIMEOUT_S", default=300)
+
+# LiveKit Cloud credentials. The three values are obtained from
+# cloud.livekit.io after creating a project. Empty defaults mean local
+# dev can run without live video — token issuance will raise on first
+# match, surfaced as a service error in the UI.
+LIVEKIT_API_KEY = env("LIVEKIT_API_KEY", default="")
+LIVEKIT_API_SECRET = env("LIVEKIT_API_SECRET", default="")
+LIVEKIT_URL = env("LIVEKIT_URL", default="")

@@ -89,3 +89,45 @@ async def test_post_consumer_ignores_other_posts() -> None:
     assert await comm.receive_nothing(timeout=0.5)
 
     await comm.disconnect()
+
+
+@pytest.mark.asyncio
+async def test_matchmaking_consumer_receives_match_event() -> None:
+    """A waiting user connects to /ws/matchmaking/<their-id>/ and receives
+    the `match_found` event when their group is signalled."""
+    comm = WebsocketCommunicator(application, "/ws/matchmaking/42/")
+    connected, _ = await comm.connect()
+    assert connected
+
+    channel_layer = get_channel_layer()
+    await channel_layer.group_send(
+        "matchmaking_42",
+        {
+            "type": "match_found",
+            "payload": {"session_id": 7, "room_url": "/body-double/room/7/"},
+        },
+    )
+
+    msg = await comm.receive_json_from()
+    assert msg["type"] == "match_found"
+    assert msg["payload"]["session_id"] == 7
+    assert msg["payload"]["room_url"] == "/body-double/room/7/"
+
+    await comm.disconnect()
+
+
+@pytest.mark.asyncio
+async def test_matchmaking_consumer_ignores_other_users() -> None:
+    """Subscriber for user 42 must not receive user 99's match events."""
+    comm = WebsocketCommunicator(application, "/ws/matchmaking/42/")
+    connected, _ = await comm.connect()
+    assert connected
+
+    channel_layer = get_channel_layer()
+    await channel_layer.group_send(
+        "matchmaking_99",
+        {"type": "match_found", "payload": {"session_id": 1, "room_url": "/x/"}},
+    )
+
+    assert await comm.receive_nothing(timeout=0.5)
+    await comm.disconnect()
