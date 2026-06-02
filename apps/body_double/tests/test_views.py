@@ -106,6 +106,28 @@ class TestFindView:
         assert response.status_code == 302
         assert response.url == "/body-double/"
 
+    def test_find_with_community_slug_records_it(self) -> None:
+        from apps.communities.models import Community
+        from apps.communities.services import create_community
+
+        owner = User.objects.create_anonymous(nickname="findowner_com")
+        community = create_community(
+            creator=owner, name="Find Com", category=Community.CATEGORY_INTEREST
+        )
+        client, user = _authed_client("findwithcom")
+        response = client.post("/body-double/find/", {"community": community.slug})
+        assert response.status_code == 302
+        ticket = PoolTicket.objects.get(user=user)
+        assert ticket.community_id == community.id
+
+    def test_find_with_unknown_community_silently_falls_back(self) -> None:
+        """Bogus slug → community=None on the ticket; user still enqueues."""
+        client, user = _authed_client("findunknowncom")
+        response = client.post("/body-double/find/", {"community": "no-such-slug"})
+        assert response.status_code == 302
+        ticket = PoolTicket.objects.get(user=user)
+        assert ticket.community_id is None
+
 
 @pytest.mark.django_db(transaction=True)
 class TestWaitingView:

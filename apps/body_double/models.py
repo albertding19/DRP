@@ -98,6 +98,17 @@ class PoolTicket(TimeStampedModel):
         on_delete=models.CASCADE,
         related_name="body_double_tickets",
     )
+    # Optional community preference. The configured matching strategy
+    # decides what to do with it; the MVP CommunityFallbackStrategy
+    # prefers same-community matches, falls back to general pool after
+    # BODY_DOUBLE_FALLBACK_S seconds.
+    community = models.ForeignKey(
+        "communities.Community",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="pool_tickets",
+    )
     status = models.CharField(
         max_length=10, choices=STATUS_CHOICES, default=STATUS_WAITING, db_index=True
     )

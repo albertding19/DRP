@@ -41,13 +41,27 @@ def index(request: HttpRequest) -> HttpResponse:
 
     If the user already has an active ticket, redirect them straight into
     the waiting page (waiting) or room (matched) rather than show the CTA.
+
+    Otherwise, show:
+      - Primary CTA: "Find me anyone" (general pool)
+      - One CTA per community the user is a member of, scoping to that
+        community.
     """
     ticket = get_active_ticket(user=request.user)
     if ticket is not None and ticket.status == PoolTicket.STATUS_MATCHED and ticket.session_id:
         return redirect("body_double:room", session_id=ticket.session_id)
     if ticket is not None and ticket.status == PoolTicket.STATUS_WAITING:
         return redirect("body_double:waiting")
-    return render(request, "body_double/index.html")
+
+    # Local import — avoids loading the communities app at module-load
+    # time and keeps the import graph stable.
+    from apps.communities.services import user_communities
+
+    return render(
+        request,
+        "body_double/index.html",
+        {"user_communities": user_communities(request.user)},
+    )
 
 
 @login_required
@@ -58,9 +72,22 @@ def find(request: HttpRequest) -> HttpResponse:
     - matched immediately → redirect to room
     - waiting in pool     → redirect to waiting
     - already enqueued    → redirect to whichever page reflects state
+
+    Optional `community` POST param: if present and a valid slug, scopes
+    the matchmaking to that community (unknown slugs are silently
+    treated as "no community preference" — the strategy then falls back
+    to general FIFO).
     """
+    community = None
+    slug = (request.POST.get("community") or "").strip()
+    if slug:
+        # Local import avoids a circular import at module load time.
+        from apps.communities.models import Community
+
+        community = Community.objects.filter(slug=slug).first()
+
     try:
-        _, session = enqueue(user=request.user)
+        _, session = enqueue(user=request.user, community=community)
     except AlreadyInPoolError:
         # User already had an active ticket — route them to the right
         # page based on its current status.

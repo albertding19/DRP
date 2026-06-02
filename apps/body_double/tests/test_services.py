@@ -59,8 +59,21 @@ class TestEnqueue:
         alice = _user("alicequeue")
         ticket, session = enqueue(user=alice)
         assert ticket.status == PoolTicket.STATUS_WAITING
+        assert ticket.community_id is None
         assert session is None
         assert PoolTicket.objects.count() == 1
+
+    def test_with_community_records_it_on_ticket(self) -> None:
+        from apps.communities.models import Community
+        from apps.communities.services import create_community
+
+        owner = _user("communityowner_enq")
+        community = create_community(
+            creator=owner, name="Enq Com", category=Community.CATEGORY_INTEREST
+        )
+        alice = _user("alice_community_enq")
+        ticket, _ = enqueue(user=alice, community=community)
+        assert ticket.community_id == community.id
 
     def test_second_user_triggers_match(self, _mock_broadcast) -> None:
         alice = _user("alice_match")

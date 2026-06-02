@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+
+{% block title %}{{ community.name }} — {{ PROJECT_NAME }}{% endblock %}
+
+{% block content %}
+<article class="community-detail">
+  <a href="{% url 'communities:list' %}" class="back-link">← All communities</a>
+
+  <header class="community-header">
+    <h1>{{ community.name }}</h1>
+    <p class="community-meta">
+      <span class="community-category community-category-{{ community.category }}">
+        {{ community.get_category_display }}
+      </span>
+      ·
+      {{ community.member_count }} member{{ community.member_count|pluralize }}
+      {% if community.creator %}
+        ·
+        created by {{ community.creator.nickname }}
+      {% endif %}
+    </p>
+  </header>
+
+  {% if community.description %}
+    <p class="community-description">{{ community.description|linebreaksbr }}</p>
+  {% endif %}
+
+  <div class="community-actions">
+    {% if is_member %}
+      <form method="post" action="{% url 'communities:leave' slug=community.slug %}" style="display:inline">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-secondary">Leave</button>
+      </form>
+    {% else %}
+      <form method="post" action="{% url 'communities:join' slug=community.slug %}" style="display:inline">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-primary">Join</button>
+      </form>
+    {% endif %}
+
+    {% if is_member %}
+      <form method="post" action="{% url 'body_double:find' %}" style="display:inline">
+        {% csrf_token %}
+        <input type="hidden" name="community" value="{{ community.slug }}">
+        <button type="submit" class="btn btn-primary">🤝 Find a body double here</button>
+      </form>
+    {% endif %}
+  </div>
+
+  <section class="community-members">
+    <h2>Members</h2>
+    {% if members %}
+      <ul class="member-list">
+        {% for m in members %}
+          <li>{{ m.user.nickname }}</li>
+        {% endfor %}
+      </ul>
+      {% if members_page.has_other_pages %}
+        <nav class="pagination">
+          {% if members_page.has_previous %}
+            <a href="?page={{ members_page.previous_page_number }}">← Previous</a>
+          {% endif %}
+          <span>Page {{ members_page.number }} of {{ members_page.paginator.num_pages }}</span>
+          {% if members_page.has_next %}
+            <a href="?page={{ members_page.next_page_number }}">Next →</a>
+          {% endif %}
+        </nav>
+      {% endif %}
+    {% else %}
+      <p class="muted">No members yet.</p>
+    {% endif %}
+  </section>
+</article>
+
+<style>
+  .community-detail { max-width: 720px; margin: 0 auto; }
+  .back-link { color: var(--fg-muted); text-decoration: none; font-size: 0.875rem; }
+  .back-link:hover { color: var(--accent); }
+  .community-header { margin: 1rem 0 1.5rem; }
+  .community-header h1 { margin: 0.5rem 0; }
+  .community-meta { color: var(--fg-muted); font-size: 0.875rem; margin: 0; }
+  .community-category { display: inline-block; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; padding: 0.1rem 0.5rem; border-radius: 3px; }
+  .community-category-module { background: #ede9fe; color: #5b21b6; }
+  .community-category-course { background: #dbeafe; color: #1e40af; }
+  .community-category-interest { background: #fef3c7; color: #92400e; }
+  .community-category-institution { background: #dcfce7; color: #166534; }
+  .community-description { background: white; padding: 1rem 1.25rem; border: 1px solid var(--border); border-radius: 8px; white-space: pre-wrap; }
+  .community-actions { display: flex; gap: 0.5rem; margin: 1.5rem 0; flex-wrap: wrap; }
+  .community-members { margin-top: 2rem; }
+  .community-members h2 { font-size: 1.1rem; }
+  .member-list { display: flex; flex-wrap: wrap; gap: 0.4rem; padding: 0; list-style: none; }
+  .member-list li { background: white; padding: 0.25rem 0.75rem; border-radius: 999px; border: 1px solid var(--border); font-size: 0.875rem; }
+  .muted { color: var(--fg-muted); font-style: italic; }
+  .pagination { display: flex; align-items: center; justify-content: space-between; margin-top: 1.5rem; font-size: 0.875rem; color: var(--fg-muted); }
+  .pagination a { color: var(--accent); text-decoration: none; }
+</style>
+{% endblock %}

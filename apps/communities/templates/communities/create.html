@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+
+{% block title %}Create a community — {{ PROJECT_NAME }}{% endblock %}
+
+{% block content %}
+<section class="community-create">
+  <a href="{% url 'communities:list' %}" class="back-link">← All communities</a>
+  <h1>Create a community</h1>
+
+  <form method="post" class="create-form">
+    {% csrf_token %}
+
+    <div class="form-row">
+      <label for="name">Name</label>
+      <input
+        type="text"
+        id="name"
+        name="name"
+        value="{{ initial.name }}"
+        placeholder="e.g. Imperial Computer Science"
+        maxlength="120"
+        required
+        autofocus
+      >
+      {% if errors.name %}<div class="form-error">{{ errors.name }}</div>{% endif %}
+    </div>
+
+    <fieldset class="form-row">
+      <legend>Category</legend>
+      <div class="radio-group">
+        {% for value, label in categories %}
+          <label class="radio-option">
+            <input type="radio" name="category" value="{{ value }}" {% if initial.category == value %}checked{% endif %} required>
+            <span>{{ label }}</span>
+          </label>
+        {% endfor %}
+      </div>
+      {% if errors.category %}<div class="form-error">{{ errors.category }}</div>{% endif %}
+    </fieldset>
+
+    <div class="form-row">
+      <label for="description">Description <small>(optional)</small></label>
+      <textarea
+        id="description"
+        name="description"
+        rows="4"
+        placeholder="What is this community for? Who should join?"
+      >{{ initial.description }}</textarea>
+    </div>
+
+    <div class="form-actions">
+      <a href="{% url 'communities:list' %}" class="btn btn-secondary">Cancel</a>
+      <button type="submit" class="btn btn-primary">Create</button>
+    </div>
+  </form>
+</section>
+
+<style>
+  .community-create { max-width: 600px; margin: 0 auto; }
+  .back-link { color: var(--fg-muted); text-decoration: none; font-size: 0.875rem; }
+  .back-link:hover { color: var(--accent); }
+  .create-form { display: grid; gap: 1.5rem; margin-top: 1.5rem; }
+  .form-row { display: grid; gap: 0.5rem; }
+  .form-row label, .form-row legend { font-weight: 600; }
+  .form-row small { color: var(--fg-muted); font-weight: 400; }
+  .form-row input, .form-row textarea { font-size: 1rem; width: 100%; }
+  .radio-group { display: flex; gap: 0.6rem; flex-wrap: wrap; }
+  .radio-option { display: flex; align-items: center; gap: 0.4rem; padding: 0.5rem 1rem; border: 1px solid var(--border); border-radius: 6px; cursor: pointer; }
+  .radio-option:has(input:checked) { border-color: var(--accent); background: rgba(37, 99, 235, 0.05); }
+  .radio-option input[type="radio"] { width: auto; padding: 0; margin: 0; border: 0; background: transparent; appearance: auto; }
+  .form-error { color: #c00; font-size: 0.875rem; }
+  .form-actions { display: flex; justify-content: flex-end; gap: 0.75rem; }
+</style>
+{% endblock %}

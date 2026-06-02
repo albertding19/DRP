@@ -34,6 +34,7 @@ urlpatterns = [
     path("tags/", include("apps.tags.urls")),
     path("search/", include("apps.search.urls")),
     path("body-double/", include("apps.body_double.urls")),
+    path("communities/", include("apps.communities.urls")),
     # ---- admin ----
     path("admin/", admin.site.urls),
 ]

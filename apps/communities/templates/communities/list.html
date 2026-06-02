@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+
+{% block title %}Communities — {{ PROJECT_NAME }}{% endblock %}
+
+{% block content %}
+<section class="communities-list">
+  <header class="communities-header">
+    <h1>Communities</h1>
+    <a href="{% url 'communities:create' %}" class="btn btn-primary">+ Create</a>
+  </header>
+
+  <form method="get" action="{% url 'communities:list' %}" class="communities-filters">
+    <input
+      type="search"
+      name="q"
+      value="{{ q }}"
+      placeholder="Search communities…"
+      aria-label="Search communities"
+    >
+    <nav class="category-chips">
+      <a href="{% url 'communities:list' %}{% if q %}?q={{ q }}{% endif %}"
+         class="chip {% if not category %}active{% endif %}">All</a>
+      {% for value, label in categories %}
+        <a href="?category={{ value }}{% if q %}&q={{ q }}{% endif %}"
+           class="chip chip-{{ value }} {% if category == value %}active{% endif %}">{{ label }}</a>
+      {% endfor %}
+    </nav>
+  </form>
+
+  {% if communities %}
+    <ul class="community-grid">
+      {% for community in communities %}
+        {% include "communities/_community_card.html" with community=community is_member=community.id|stringformat:"s" %}
+      {% endfor %}
+    </ul>
+
+    {% if page.has_other_pages %}
+      <nav class="pagination">
+        {% if page.has_previous %}
+          <a href="?page={{ page.previous_page_number }}{% if category %}&category={{ category }}{% endif %}{% if q %}&q={{ q }}{% endif %}">← Previous</a>
+        {% endif %}
+        <span>Page {{ page.number }} of {{ page.paginator.num_pages }}</span>
+        {% if page.has_next %}
+          <a href="?page={{ page.next_page_number }}{% if category %}&category={{ category }}{% endif %}{% if q %}&q={{ q }}{% endif %}">Next →</a>
+        {% endif %}
+      </nav>
+    {% endif %}
+  {% else %}
+    <div class="empty-state">
+      <p><strong>No communities yet{% if category %} in this category{% endif %}.</strong></p>
+      <p>Be the first — <a href="{% url 'communities:create' %}">create one</a>.</p>
+    </div>
+  {% endif %}
+</section>
+
+<style>
+  .communities-list { max-width: 920px; margin: 0 auto; }
+  .communities-header { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 1.5rem; }
+  .communities-header h1 { margin: 0; }
+  .communities-filters { margin-bottom: 1.5rem; display: grid; gap: 0.75rem; }
+  .communities-filters input[type="search"] { width: 100%; font-size: 1rem; padding: 0.5rem 0.75rem; border: 1px solid var(--border); border-radius: 6px; }
+  .category-chips { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+  .chip { display: inline-block; padding: 0.3rem 0.75rem; border-radius: 999px; background: white; border: 1px solid var(--border); color: var(--fg); font-size: 0.85rem; text-decoration: none; }
+  .chip:hover { border-color: var(--accent); }
+  .chip.active { background: var(--accent); color: white; border-color: var(--accent); }
+  .community-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 0.75rem; list-style: none; padding: 0; margin: 0; }
+  .empty-state { text-align: center; padding: 3rem 1rem; color: var(--fg-muted); }
+  .empty-state p:first-child { font-size: 1.125rem; color: var(--fg); margin-bottom: 0.5rem; }
+  .pagination { display: flex; align-items: center; justify-content: space-between; margin-top: 2rem; font-size: 0.875rem; color: var(--fg-muted); }
+  .pagination a { color: var(--accent); text-decoration: none; }
+</style>
+{% endblock %}
