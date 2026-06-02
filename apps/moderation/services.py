@@ -63,6 +63,20 @@ def contains_abusive_language(text: str) -> bool:
     return profanity.contains_profanity(text)
 
 
+def _strip_markdown_fence(text: str) -> str:
+    """Strip ``` or ```json fences from a Claude response so the inner
+    JSON parses. Tolerant: returns input unchanged if no fence detected."""
+    s = text.strip()
+    if s.startswith("```"):
+        # Drop the opening fence line (could be "```" or "```json").
+        s = s.split("\n", 1)[-1] if "\n" in s else s[3:]
+        # Drop the closing fence.
+        if s.endswith("```"):
+            s = s[:-3]
+        s = s.strip()
+    return s
+
+
 def judge_with_claude(text: str) -> tuple[bool, str]:
     """L2 — send `text` to Claude Haiku with the ADHD-calibrated rubric.
 
@@ -114,7 +128,10 @@ def judge_with_claude(text: str) -> tuple[bool, str]:
             logger.warning("Claude L2 judge returned no text content")
             return False, ""
 
-        parsed = json.loads(raw)
+        # Claude sometimes wraps the JSON in markdown code fences despite
+        # the rubric asking for raw JSON. Strip them defensively before
+        # parsing — observed behaviour as of claude-haiku-4-5-20251001.
+        parsed = json.loads(_strip_markdown_fence(raw))
         block = bool(parsed.get("block", False))
         reason = str(parsed.get("reason", "") or "").strip()
         return block, reason
