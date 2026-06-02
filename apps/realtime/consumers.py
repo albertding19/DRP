@@ -44,6 +44,9 @@ class FeedConsumer(AsyncJsonWebsocketConsumer):
     async def score_changed(self, event: dict) -> None:
         await self.send_json({"type": "score_changed", "payload": event["payload"]})
 
+    async def post_hidden(self, event: dict) -> None:
+        await self.send_json({"type": "post_hidden", "payload": event["payload"]})
+
 
 class PostConsumer(AsyncJsonWebsocketConsumer):
     """Subscribers on a single post see new comments + vote updates."""
@@ -68,3 +71,9 @@ class PostConsumer(AsyncJsonWebsocketConsumer):
 
     async def score_changed(self, event: dict) -> None:
         await self.send_json({"type": "score_changed", "payload": event["payload"]})
+
+    async def comment_hidden(self, event: dict) -> None:
+        await self.send_json({"type": "comment_hidden", "payload": event["payload"]})
+
+    async def post_hidden(self, event: dict) -> None:
+        await self.send_json({"type": "post_hidden", "payload": event["payload"]})

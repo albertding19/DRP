@@ -1,0 +1,41 @@
+{% comment %}
+The new-comment composer at the top of the thread.
+
+Submission flow:
+  - On success: server returns the new comment partial; HTMX prepends it
+    to #thread via the form's default `hx-target` / `hx-swap`.
+  - On validation failure (including L1/L2 moderation block): server
+    returns this same partial re-rendered with errors, and overrides the
+    swap target via the HX-Retarget + HX-Reswap response headers so the
+    form replaces itself instead of being prepended to #thread.
+
+Context: { post, form (optional — blank rendered if absent) }
+{% endcomment %}
+
+<form
+  id="comment-form-{{ post.id }}"
+  method="post"
+  action="{% url 'comments:create' post_pk=post.id %}"
+  class="comment-form"
+  hx-post="{% url 'comments:create' post_pk=post.id %}"
+  hx-target="#thread"
+  hx-swap="afterbegin"
+  x-on:htmx:after-request="
+    if (event.detail.successful && !event.detail.xhr.getResponseHeader('HX-Retarget')) {
+      $el.reset();
+    }
+  "
+>
+  {% csrf_token %}
+  {% if form.body.errors %}
+    <div class="form-error" role="alert">{{ form.body.errors.0 }}</div>
+  {% endif %}
+  <textarea
+    name="body"
+    rows="3"
+    placeholder="Write a comment…"
+    required
+    maxlength="5000"
+  >{% if form %}{{ form.body.value|default:"" }}{% endif %}</textarea>
+  <button type="submit" class="btn btn-primary">Comment</button>
+</form>

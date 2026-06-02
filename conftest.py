@@ -19,3 +19,27 @@ def client_with_session(client, db):
     session["user_id"] = user.id
     session.save()
     return client, user
+
+
+@pytest.fixture(autouse=True)
+def _neutralise_claude_judge(monkeypatch, request):
+    """Autouse: stop tests from hitting the real Anthropic API.
+
+    Any unit / integration test would otherwise reach out over the network
+    (or fail because ANTHROPIC_API_KEY is unset). We patch the L2 judge to
+    always return (False, "") — the same fail-open path it takes in
+    production when the key is missing.
+
+    Tests that explicitly want to exercise L2 should:
+      - Patch `apps.moderation.services.judge_with_claude` to a custom
+        function inside the test body, OR
+      - Mark with `@pytest.mark.live` to opt out of this autouse and hit
+        the real API (live tests are skipped in CI by default).
+    """
+    if "live" in request.keywords:
+        return  # let live tests through
+
+    def _always_pass(text: str) -> tuple[bool, str]:
+        return False, ""
+
+    monkeypatch.setattr("apps.moderation.services.judge_with_claude", _always_pass)

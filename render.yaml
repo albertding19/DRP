@@ -64,4 +64,10 @@ services:
           property: connectionString
       - key: DEBUG
         value: "False"
+      # Anthropic key for L2 (Claude Haiku) content moderation. `sync: false`
+      # means "expected to exist on the service but not committed here" — set
+      # the value via the Render dashboard. If absent, L2 fails open per
+      # `apps.moderation.services.judge_with_claude`.
+      - key: ANTHROPIC_API_KEY
+        sync: false
       # RENDER_GIT_COMMIT is auto-injected by Render at build time

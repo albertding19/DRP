@@ -5,8 +5,13 @@ from __future__ import annotations
 import pytest
 
 from apps.accounts.models import User
-from apps.posts.models import Post
-from apps.posts.services import create_post, feed_queryset
+from apps.posts.models import Post, PostReport
+from apps.posts.services import (
+    REPORT_AUTO_HIDE_THRESHOLD,
+    create_post,
+    feed_queryset,
+    report_post,
+)
 
 
 @pytest.mark.django_db
@@ -65,3 +70,51 @@ class TestFeedQueryset:
         Post.objects.filter(pk=a.pk).update(is_deleted=True)
         qs = list(feed_queryset())
         assert a not in qs
+
+    def test_excludes_hidden(self) -> None:
+        """L3-hidden posts are filtered out of the feed (alongside is_deleted)."""
+        _, a, _, _ = self._setup()
+        Post.objects.filter(pk=a.pk).update(is_hidden=True)
+        qs = list(feed_queryset())
+        assert a not in qs
+
+
+@pytest.mark.django_db
+class TestReportPost:
+    """L3 reporting service for posts. Threshold is 3 reports → auto-hide."""
+
+    def _post(self) -> Post:
+        author = User.objects.create_anonymous(nickname="reportedposted")
+        return Post.objects.create(author=author, title="t", body="b")
+
+    def test_single_report_no_hide(self) -> None:
+        p = self._post()
+        reporter = User.objects.create_anonymous(nickname="postreporter1")
+        count, just_hidden = report_post(post=p, reporter=reporter)
+        assert count == 1
+        assert just_hidden is False
+        p.refresh_from_db()
+        assert p.report_count == 1
+        assert p.is_hidden is False
+        assert PostReport.objects.count() == 1
+
+    def test_threshold_hides_post(self) -> None:
+        p = self._post()
+        reporters = [
+            User.objects.create_anonymous(nickname=f"postreporter_{i}")
+            for i in range(REPORT_AUTO_HIDE_THRESHOLD)
+        ]
+        results = [report_post(post=p, reporter=r) for r in reporters]
+        assert [hidden for _, hidden in results] == [False, False, True]
+        p.refresh_from_db()
+        assert p.is_hidden is True
+
+    def test_same_reporter_idempotent(self) -> None:
+        p = self._post()
+        reporter = User.objects.create_anonymous(nickname="postreporter_dup")
+        a = report_post(post=p, reporter=reporter)
+        b = report_post(post=p, reporter=reporter)
+        assert a == (1, False)
+        assert b == (1, False)
+        p.refresh_from_db()
+        assert p.report_count == 1

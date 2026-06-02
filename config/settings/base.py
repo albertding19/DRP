@@ -57,6 +57,7 @@ INSTALLED_APPS = [
     "apps.tags",
     "apps.search",
     "apps.realtime",
+    "apps.moderation",
 ]
 
 # ---------------------------------------------------------------------------
@@ -166,3 +167,18 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # Build info (set in prod by Render)
 RENDER_GIT_COMMIT = env("RENDER_GIT_COMMIT", default="dev")
+
+# ---------------------------------------------------------------------------
+# Content moderation
+# ---------------------------------------------------------------------------
+# Anthropic API key for L2 (Claude Haiku) judge in apps.moderation.services.
+# When empty, judge_with_claude short-circuits to (False, "") — content
+# passes L2 unchecked, L1 still blocks the obvious, L3 catches the rest.
+ANTHROPIC_API_KEY = env("ANTHROPIC_API_KEY", default="")
+
+# Model ID. Pinned to the codebase convention from CLAUDE.md.
+MODERATION_CLAUDE_MODEL = env("MODERATION_CLAUDE_MODEL", default="claude-haiku-4-5-20251001")
+
+# Hard timeout in seconds for the Claude API call before we give up and
+# pass the content through.
+MODERATION_CLAUDE_TIMEOUT_S = env.float("MODERATION_CLAUDE_TIMEOUT_S", default=3.0)

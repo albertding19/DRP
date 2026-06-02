@@ -1,5 +1,5 @@
 {# Reusable post card. Used by feed and search results. #}
-<li class="post-card">
+<li class="post-card" data-post-id="{{ post.id }}">
   <div class="post-card-vote">
     {% include "votes/_vote_buttons.html" with target=post target_type="post" %}
   </div>

@@ -1,0 +1,40 @@
+{% comment %}
+The reply composer inside a top-level comment.
+
+Submission flow mirrors `_comment_form.html`:
+  - On success: server returns the new reply partial; HTMX appends to
+    #replies-<id> via the form's default `hx-target` / `hx-swap`.
+  - On validation failure (incl. moderation block): server returns this
+    same partial re-rendered with errors, overriding the swap target via
+    HX-Retarget + HX-Reswap response headers so the form replaces itself.
+
+Context: { comment, form (optional — blank rendered if absent) }
+{% endcomment %}
+
+<form
+  id="reply-form-{{ comment.id }}"
+  method="post"
+  action="{% url 'comments:reply' comment_pk=comment.id %}"
+  hx-post="{% url 'comments:reply' comment_pk=comment.id %}"
+  hx-target="#replies-{{ comment.id }}"
+  hx-swap="beforeend"
+  x-on:htmx:after-request="
+    if (event.detail.successful && !event.detail.xhr.getResponseHeader('HX-Retarget')) {
+      showReply = false;
+      $el.reset();
+    }
+  "
+>
+  {% csrf_token %}
+  {% if form.body.errors %}
+    <div class="form-error" role="alert">{{ form.body.errors.0 }}</div>
+  {% endif %}
+  <textarea
+    name="body"
+    rows="3"
+    placeholder="Write a reply…"
+    required
+    maxlength="5000"
+  >{% if form %}{{ form.body.value|default:"" }}{% endif %}</textarea>
+  <button type="submit" class="btn btn-primary btn-sm">Post reply</button>
+</form>

@@ -64,3 +64,29 @@ def broadcast_vote_change(target, new_score: int) -> None:  # noqa: ANN001
         _send(post_group(target.id), "score_changed", payload)
     elif cls == "comment":
         _send(post_group(target.post_id), "score_changed", payload)
+
+
+def broadcast_comment_hidden(comment) -> None:  # noqa: ANN001
+    """Sent when a comment crosses the L3 auto-hide threshold.
+
+    Live viewers on the post-detail page (joined to `post_<id>`) receive
+    the event; the Alpine handler removes the comment node from the DOM
+    so reporters don't see stale state until they refresh.
+    """
+    _send(
+        post_group(comment.post_id),
+        "comment_hidden",
+        {"id": comment.id, "post_id": comment.post_id},
+    )
+
+
+def broadcast_post_hidden(post) -> None:  # noqa: ANN001
+    """Sent when a post crosses the L3 auto-hide threshold.
+
+    Two groups receive the event: the feed (so post cards disappear from
+    the home page) and `post_<id>` (so anyone on the detail page sees the
+    content vanish without a refresh).
+    """
+    payload = {"id": post.id}
+    _send(FEED_GROUP, "post_hidden", payload)
+    _send(post_group(post.id), "post_hidden", payload)

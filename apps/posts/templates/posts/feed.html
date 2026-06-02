@@ -21,6 +21,11 @@
     );
     if (el) el.textContent = event.detail.score;
   "
+  x-on:ws:post_hidden.window="
+    /* L3 threshold reached for a post — remove its card from the feed. */
+    const card = document.querySelector(`[data-post-id='${event.detail.id}']`);
+    if (card) card.remove();
+  "
 >
   <header class="feed-header">
     {% if filtered_tag %}
