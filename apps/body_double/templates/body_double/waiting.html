@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+
+{% block title %}Waiting for a body double — {{ PROJECT_NAME }}{% endblock %}
+
+{% block content %}
+<section
+  class="body-double-waiting"
+  x-data="{ elapsed: 0, timedOut: false }"
+  x-init="
+    /* Elapsed-time counter, ticking every second. */
+    setInterval(() => {
+      elapsed++;
+      if (elapsed >= {{ wait_timeout_s }}) { timedOut = true; }
+    }, 1000);
+
+    /* WebSocket listener: redirect to the room as soon as a partner
+       enters the pool. The server pushes `match_found` with the room URL
+       directly in the payload. */
+    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+    const ws = new WebSocket(`${proto}://${location.host}/ws/matchmaking/{{ request.user.id }}/`);
+    ws.onmessage = (e) => {
+      try {
+        const msg = JSON.parse(e.data);
+        if (msg.type === 'match_found' && msg.payload && msg.payload.room_url) {
+          window.location.href = msg.payload.room_url;
+        }
+      } catch (err) { /* malformed message — ignore */ }
+    };
+  "
+>
+  <h1>Looking for a body double…</h1>
+
+  <p class="elapsed">
+    Waited <span x-text="elapsed"></span> second<span x-show="elapsed !== 1">s</span>
+    <span x-show="!timedOut" class="muted">— hang tight.</span>
+  </p>
+
+  <div x-show="timedOut" x-cloak class="timed-out">
+    <p>No one's available right now. Want to try again?</p>
+    <form method="post" action="{% url 'body_double:find' %}" style="display:inline">
+      {% csrf_token %}
+      <button type="submit" class="btn btn-primary">Try again</button>
+    </form>
+  </div>
+
+  <form method="post" action="{% url 'body_double:leave' %}" class="cancel-form">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-secondary">Cancel</button>
+  </form>
+</section>
+
+<style>
+  [x-cloak] { display: none !important; }
+  .body-double-waiting { max-width: 480px; margin: 0 auto; text-align: center; padding: 3rem 0; }
+  .body-double-waiting h1 { font-size: 1.5rem; margin-bottom: 1.5rem; }
+  .elapsed { font-size: 1.1rem; color: var(--fg); }
+  .muted { color: var(--fg-muted); }
+  .timed-out { margin: 2rem 0; padding: 1rem; background: #fef3c7; border-radius: 8px; }
+  .cancel-form { margin-top: 2rem; }
+</style>
+{% endblock %}

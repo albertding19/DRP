@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+
+{% block title %}Find a body double — {{ PROJECT_NAME }}{% endblock %}
+
+{% block content %}
+<section class="body-double-landing">
+  <h1>🤝 Find a body double</h1>
+
+  <p class="lead">
+    Body doubling is working alongside another person — even silently — to
+    help your brain focus. Click the button below to be matched with
+    someone else from the community for a quick video session.
+  </p>
+
+  <form method="post" action="{% url 'body_double:find' %}">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-primary btn-lg">
+      Find me a body double
+    </button>
+  </form>
+
+  <details class="how-it-works">
+    <summary>How it works</summary>
+    <ol>
+      <li>You join a pool of people looking for a body double.</li>
+      <li>The next person to join the pool is paired with you.</li>
+      <li>You both get dropped into a 2-person video room.</li>
+      <li>Work together for as long as feels useful. Either of you can end the session at any time.</li>
+    </ol>
+    <p class="small">No real names. No recording. Just your nickname and a video call.</p>
+  </details>
+</section>
+
+<style>
+  .body-double-landing { max-width: 560px; margin: 0 auto; text-align: center; padding: 2rem 0; }
+  .body-double-landing h1 { font-size: 2rem; margin: 0 0 1rem; }
+  .body-double-landing .lead { font-size: 1.1rem; color: var(--fg); margin-bottom: 2rem; line-height: 1.5; }
+  .btn-lg { font-size: 1.1rem; padding: 0.85rem 2rem; }
+  .how-it-works { margin-top: 3rem; text-align: left; background: white; border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.25rem; }
+  .how-it-works summary { cursor: pointer; font-weight: 600; }
+  .how-it-works ol { padding-left: 1.25rem; }
+  .how-it-works li { margin: 0.4rem 0; }
+  .how-it-works .small { font-size: 0.85rem; color: var(--fg-muted); margin-top: 1rem; }
+</style>
+{% endblock %}

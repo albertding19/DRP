@@ -70,4 +70,12 @@ services:
       # `apps.moderation.services.judge_with_claude`.
       - key: ANTHROPIC_API_KEY
         sync: false
+      # LiveKit Cloud credentials for body-double video calls. Same
+      # sync:false pattern — set values via the Render dashboard.
+      - key: LIVEKIT_API_KEY
+        sync: false
+      - key: LIVEKIT_API_SECRET
+        sync: false
+      - key: LIVEKIT_URL
+        sync: false
       # RENDER_GIT_COMMIT is auto-injected by Render at build time

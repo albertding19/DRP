@@ -1,0 +1,21 @@
+"""Body-double URLs.
+
+Mounted at /body-double/ in config.urls.
+"""
+
+from __future__ import annotations
+
+from django.urls import path
+
+from . import views
+
+app_name = "body_double"
+
+urlpatterns = [
+    path("", views.index, name="index"),
+    path("find/", views.find, name="find"),
+    path("waiting/", views.waiting, name="waiting"),
+    path("room/<int:session_id>/", views.room, name="room"),
+    path("leave/", views.leave, name="leave"),
+    path("sessions/<int:session_id>/end/", views.end, name="end"),
+]

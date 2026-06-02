@@ -1,0 +1,146 @@
+"""Body-double views — landing, find/cancel, waiting, room, end.
+
+The flow:
+  GET  /body-double/                       → landing CTA
+  POST /body-double/find/                  → enqueue; redirect to room or waiting
+  GET  /body-double/waiting/               → waiting page (WS-driven redirect)
+  GET  /body-double/room/<int:session_id>/ → call page (issues LiveKit token)
+  POST /body-double/leave/                 → cancel waiting ticket
+  POST /body-double/sessions/<int>/end/    → mark session ended
+
+Most views require a logged-in user; the auth middleware already redirects
+anonymous visits to the nickname picker, so we use `@login_required` for
+clarity but the middleware is the real enforcer.
+"""
+
+from __future__ import annotations
+
+from django.conf import settings
+from django.contrib.auth.decorators import login_required
+from django.http import HttpRequest, HttpResponse
+from django.shortcuts import get_object_or_404, redirect, render
+from django.utils.module_loading import import_string
+from django.views.decorators.http import require_GET, require_POST
+
+from .models import BodyDoubleSession, PoolTicket
+from .services import (
+    AlreadyInPoolError,
+    NotInSessionError,
+    cancel_waiting,
+    end_session,
+    enqueue,
+    get_active_ticket,
+)
+
+
+@login_required
+@require_GET
+def index(request: HttpRequest) -> HttpResponse:
+    """Landing page — explains body doubling + "Find a body double" CTA.
+
+    If the user already has an active ticket, redirect them straight into
+    the waiting page (waiting) or room (matched) rather than show the CTA.
+    """
+    ticket = get_active_ticket(user=request.user)
+    if ticket is not None and ticket.status == PoolTicket.STATUS_MATCHED and ticket.session_id:
+        return redirect("body_double:room", session_id=ticket.session_id)
+    if ticket is not None and ticket.status == PoolTicket.STATUS_WAITING:
+        return redirect("body_double:waiting")
+    return render(request, "body_double/index.html")
+
+
+@login_required
+@require_POST
+def find(request: HttpRequest) -> HttpResponse:
+    """Enqueue the requesting user. Three outcomes:
+
+    - matched immediately → redirect to room
+    - waiting in pool     → redirect to waiting
+    - already enqueued    → redirect to whichever page reflects state
+    """
+    try:
+        _, session = enqueue(user=request.user)
+    except AlreadyInPoolError:
+        # User already had an active ticket — route them to the right
+        # page based on its current status.
+        return redirect("body_double:index")
+
+    if session is not None:
+        return redirect("body_double:room", session_id=session.id)
+    return redirect("body_double:waiting")
+
+
+@login_required
+@require_GET
+def waiting(request: HttpRequest) -> HttpResponse:
+    """Show the waiting page. Client opens a WS to be notified of match."""
+    ticket = get_active_ticket(user=request.user)
+    if ticket is None:
+        # Nothing to wait on — bounce to landing.
+        return redirect("body_double:index")
+    if ticket.status == PoolTicket.STATUS_MATCHED and ticket.session_id:
+        # Already matched (race: WS push arrived but user reloaded the
+        # waiting URL anyway). Redirect to room.
+        return redirect("body_double:room", session_id=ticket.session_id)
+    return render(
+        request,
+        "body_double/waiting.html",
+        {"ticket": ticket, "wait_timeout_s": settings.BODY_DOUBLE_WAIT_TIMEOUT_S},
+    )
+
+
+@login_required
+@require_GET
+def room(request: HttpRequest, session_id: int) -> HttpResponse:
+    """Render the call page with a freshly-minted video-provider token.
+
+    Auth: 404 if `request.user` is not a participant — prevents URL
+    enumeration from leaking other people's room IDs / tokens.
+    """
+    session = get_object_or_404(BodyDoubleSession, pk=session_id)
+    if not session.includes(request.user):
+        # Treat as 404 rather than 403 to avoid confirming the existence
+        # of sessions the user isn't part of.
+        from django.http import Http404
+
+        raise Http404("No such session.")
+    if session.status != BodyDoubleSession.STATUS_ACTIVE:
+        # Session has already ended; route back to landing.
+        return redirect("body_double:index")
+
+    # Mint the join token via the configured provider.
+    provider = import_string(settings.BODY_DOUBLE_VIDEO_PROVIDER)()
+    token = provider.issue_join_token(room_id=session.room_id, user=request.user)
+
+    return render(
+        request,
+        "body_double/room.html",
+        {
+            "session": session,
+            "token": token,
+            "ws_url": settings.LIVEKIT_URL,
+            "room_id": session.room_id,
+        },
+    )
+
+
+@login_required
+@require_POST
+def leave(request: HttpRequest) -> HttpResponse:
+    """Cancel the user's waiting ticket. No-op if they had none."""
+    cancel_waiting(user=request.user)
+    return redirect("body_double:index")
+
+
+@login_required
+@require_POST
+def end(request: HttpRequest, session_id: int) -> HttpResponse:
+    """Mark the session as ended. Either participant can end."""
+    session = get_object_or_404(BodyDoubleSession, pk=session_id)
+    try:
+        end_session(session=session, user=request.user)
+    except NotInSessionError:
+        from django.http import Http404
+
+        raise Http404("No such session.") from None
+    return redirect("body_double:index")
