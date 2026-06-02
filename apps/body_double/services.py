@@ -129,6 +129,13 @@ def end_session(*, session: BodyDoubleSession, user) -> None:  # type: ignore[no
     """Mark `session` as ended. Idempotent on already-ended sessions.
 
     Auth: only one of the two participants may end the session.
+
+    Side effect: both participants' tickets transition MATCHED → COMPLETED.
+    Without this, a user who ends a session and then tries to enqueue
+    again would still have a "matched" ticket lingering — the index view
+    would redirect them at the (now-ended) room, the room view would
+    redirect them back to index, and Safari shows "can't open this page"
+    after the loop trips its redirect-count cap.
     """
     if not session.includes(user):
         raise NotInSessionError("Only the session participants can end the call.")
@@ -139,6 +146,13 @@ def end_session(*, session: BodyDoubleSession, user) -> None:  # type: ignore[no
     session.status = BodyDoubleSession.STATUS_ENDED
     session.ended_at = timezone.now()
     session.save(update_fields=["status", "ended_at", "updated_at"])
+
+    # Retire both tickets so the users can re-enqueue. COMPLETED is a
+    # terminal status NOT in ACTIVE_STATUSES, so `get_active_ticket`
+    # returns None and the landing CTA reappears.
+    PoolTicket.objects.filter(session=session, status=PoolTicket.STATUS_MATCHED).update(
+        status=PoolTicket.STATUS_COMPLETED, updated_at=timezone.now()
+    )
 
     # Best-effort: ask the provider to tear down. LiveKit auto-cleans
     # empty rooms, so this is a no-op there; other providers may need it.
