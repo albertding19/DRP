@@ -77,17 +77,20 @@ class PoolTicket(TimeStampedModel):
 
     STATUS_WAITING = "waiting"
     STATUS_MATCHED = "matched"
+    STATUS_COMPLETED = "completed"  # session ended normally
     STATUS_CANCELLED = "cancelled"
     STATUS_EXPIRED = "expired"
     STATUS_CHOICES = [
         (STATUS_WAITING, "Waiting"),
         (STATUS_MATCHED, "Matched"),
+        (STATUS_COMPLETED, "Completed"),
         (STATUS_CANCELLED, "Cancelled"),
         (STATUS_EXPIRED, "Expired"),
     ]
 
     # Tickets in these states block the user from creating another one
-    # (enforced by the partial unique constraint below).
+    # (enforced by the partial unique constraint below). Completed and
+    # cancelled tickets are terminal — the user may enqueue again.
     ACTIVE_STATUSES = (STATUS_WAITING, STATUS_MATCHED)
 
     user = models.ForeignKey(
