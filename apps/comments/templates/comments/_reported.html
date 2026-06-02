@@ -1,0 +1,10 @@
+{% comment %}
+Returned as the HTMX response when a user successfully reports a comment.
+Replaces the Report button (or whole form-wrapper) with a confirmation.
+
+Context: { comment }
+{% endcomment %}
+
+<span class="comment-action comment-reported" role="status">
+  Thanks — we've recorded your report.
+</span>

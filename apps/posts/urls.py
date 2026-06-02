@@ -15,4 +15,5 @@ urlpatterns = [
     path("feed/", views.feed, name="feed_alias"),
     path("posts/new/", views.create, name="create"),
     path("posts/<int:pk>/", views.detail, name="detail"),
+    path("posts/<int:pk>/report/", views.report, name="report"),
 ]

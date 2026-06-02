@@ -4,13 +4,19 @@ from __future__ import annotations
 
 from django import forms
 
+from apps.moderation.models import ModerationLog
+from apps.moderation.services import screen
 from apps.tags.services import parse_tags_input
 
 from .models import Post
 
 
 class PostForm(forms.ModelForm):
-    """The Share form. Tags entered as comma-separated; parsed/normalised on clean."""
+    """The Share form. Tags entered as comma-separated; parsed/normalised on clean.
+
+    Pass `author=request.user` when constructing so L1 / L2 rejections
+    have a user to attribute in `ModerationLog`.
+    """
 
     tags = forms.CharField(
         required=False,
@@ -52,16 +58,30 @@ class PostForm(forms.ModelForm):
             "body": "Body",
         }
 
+    def __init__(self, *args, author=None, **kwargs):  # type: ignore[no-untyped-def]
+        super().__init__(*args, **kwargs)
+        self.author = author
+
     def clean_title(self) -> str:
         title = (self.cleaned_data["title"] or "").strip()
         if not title:
             raise forms.ValidationError("Give your post a title.")
+
+        block, reason = screen(title, author=self.author, surface=ModerationLog.SURFACE_POST_TITLE)
+        if block:
+            raise forms.ValidationError(reason)
+
         return title
 
     def clean_body(self) -> str:
         body = (self.cleaned_data["body"] or "").strip()
         if not body:
             raise forms.ValidationError("Body can't be empty.")
+
+        block, reason = screen(body, author=self.author, surface=ModerationLog.SURFACE_POST_BODY)
+        if block:
+            raise forms.ValidationError(reason)
+
         return body
 
     def clean_tags(self) -> list[str]:

@@ -15,10 +15,11 @@ from django.urls import reverse
 from django.views.decorators.http import require_GET, require_POST
 
 from apps.posts.models import Post
+from apps.realtime import broadcast
 
 from .forms import CommentForm
 from .models import Comment
-from .services import create_comment, soft_delete_comment
+from .services import create_comment, report_comment, soft_delete_comment
 
 
 @login_required
@@ -26,15 +27,15 @@ from .services import create_comment, soft_delete_comment
 def create(request: HttpRequest, post_pk: int) -> HttpResponse:
     """Create a top-level comment on a post."""
     post = get_object_or_404(Post, pk=post_pk, is_deleted=False)
-    form = CommentForm(request.POST)
+    form = CommentForm(request.POST, author=request.user)
     if not form.is_valid():
-        # Re-render the detail page so the user sees the form errors.
-        return _redirect_with_error(request, post, form)
+        return _render_create_error(request, post, form)
 
     try:
         comment = create_comment(author=request.user, post=post, body=form.cleaned_data["body"])
     except ValidationError as exc:
-        return _redirect_with_error(request, post, exc.messages)
+        form.add_error("body", exc)
+        return _render_create_error(request, post, form)
 
     if request.htmx:
         return render(
@@ -51,9 +52,9 @@ def reply(request: HttpRequest, comment_pk: int) -> HttpResponse:
     """Reply to an existing comment (one-level nesting)."""
     parent = get_object_or_404(Comment, pk=comment_pk, is_deleted=False)
     post = parent.post
-    form = CommentForm(request.POST)
+    form = CommentForm(request.POST, author=request.user)
     if not form.is_valid():
-        return _redirect_with_error(request, post, form)
+        return _render_reply_error(request, parent, form)
 
     try:
         comment = create_comment(
@@ -63,7 +64,8 @@ def reply(request: HttpRequest, comment_pk: int) -> HttpResponse:
             parent=parent,
         )
     except ValidationError as exc:
-        return _redirect_with_error(request, post, exc.messages)
+        form.add_error("body", exc)
+        return _render_reply_error(request, parent, form)
 
     if request.htmx:
         return render(
@@ -91,6 +93,39 @@ def delete(request: HttpRequest, comment_pk: int) -> HttpResponse:
     return redirect(reverse("posts:detail", args=[comment.post_id]))
 
 
+@login_required
+@require_POST
+def report(request: HttpRequest, comment_pk: int) -> HttpResponse:
+    """Record a user's report against a comment. Idempotent per user/comment.
+
+    HTMX: returns a small `_reported.html` partial that replaces the Report
+    button with a "Thanks — we've recorded your report" confirmation.
+    Non-HTMX: redirects to the post detail page.
+
+    If the report pushes the count over the threshold, broadcasts a WS
+    `comment_hidden` event so live viewers' UI removes the node without a
+    refresh.
+    """
+    comment = get_object_or_404(
+        Comment.objects.select_related("post"),
+        pk=comment_pk,
+        is_deleted=False,
+        is_hidden=False,
+    )
+    _, just_hidden = report_comment(comment=comment, reporter=request.user)
+
+    if just_hidden:
+        broadcast.broadcast_comment_hidden(comment)
+
+    if request.htmx:
+        return render(
+            request,
+            "comments/_reported.html",
+            {"comment": comment},
+        )
+    return redirect(reverse("posts:detail", args=[comment.post_id]))
+
+
 @require_GET
 def permalink(request: HttpRequest, post_pk: int, comment_pk: int) -> HttpResponse:
     """Reddit-style single-comment view.
@@ -109,6 +144,7 @@ def permalink(request: HttpRequest, post_pk: int, comment_pk: int) -> HttpRespon
         pk=comment_pk,
         post=post,
         is_deleted=False,
+        is_hidden=False,
     )
     return render(
         request,
@@ -117,14 +153,50 @@ def permalink(request: HttpRequest, post_pk: int, comment_pk: int) -> HttpRespon
     )
 
 
-def _redirect_with_error(request, post, form_or_errors):  # type: ignore[no-untyped-def]
-    """Fallback re-render path when validation failed.
+def _render_create_error(request: HttpRequest, post: Post, form: CommentForm) -> HttpResponse:
+    """Re-render the new-comment form with validation errors visible.
 
-    Best-effort: send the user back to the detail page; the form re-renders
-    empty. For MVP this is acceptable — the body length check is server-side
-    but unlikely to fire because the textarea has maxlength=5000. The
-    `form_or_errors` argument is reserved for future message-passing once
-    Django's messages framework is wired into the layout.
+    HTMX path: returns just the `_comment_form.html` partial and overrides
+    the swap target via `HX-Retarget` / `HX-Reswap` so the form replaces
+    itself in-place (preserving the user's typed input) instead of being
+    inserted at the top of #thread.
+
+    Non-HTMX path: returns the full post-detail page with the form's errors
+    populated so the user sees what went wrong.
     """
-    del form_or_errors  # intentionally unused for now
-    return redirect(reverse("posts:detail", args=[post.pk]))
+    if request.htmx:
+        response = render(
+            request,
+            "comments/_comment_form.html",
+            {"form": form, "post": post},
+        )
+        response["HX-Retarget"] = f"#comment-form-{post.id}"
+        response["HX-Reswap"] = "outerHTML"
+        return response
+    return render(
+        request,
+        "posts/detail.html",
+        {"post": post, "comment_form": form},
+    )
+
+
+def _render_reply_error(request: HttpRequest, parent: Comment, form: CommentForm) -> HttpResponse:
+    """Re-render the reply form with validation errors visible.
+
+    Same HX-Retarget / HX-Reswap pattern as `_render_create_error`, but
+    targeting the per-comment reply form by id.
+    """
+    if request.htmx:
+        response = render(
+            request,
+            "comments/_reply_form.html",
+            {"form": form, "comment": parent},
+        )
+        response["HX-Retarget"] = f"#reply-form-{parent.id}"
+        response["HX-Reswap"] = "outerHTML"
+        return response
+    return render(
+        request,
+        "posts/detail.html",
+        {"post": parent.post, "reply_form": form, "reply_parent": parent},
+    )

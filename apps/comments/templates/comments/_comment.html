@@ -72,27 +72,32 @@ Two Reddit-style behaviours:
           <button type="submit" class="comment-action comment-action-danger">Delete</button>
         </form>
       {% endif %}
+      {% if request.user.is_authenticated and comment.author_id != request.user.id %}
+        <form
+          method="post"
+          action="{% url 'comments:report' comment_pk=comment.id %}"
+          class="comment-report-form"
+          hx-post="{% url 'comments:report' comment_pk=comment.id %}"
+          hx-target="this"
+          hx-swap="outerHTML"
+          hx-confirm="Report this comment? Three reports will hide it from the thread pending review."
+        >
+          {% csrf_token %}
+          <button type="submit" class="comment-action comment-action-report">Report</button>
+        </form>
+      {% endif %}
     </footer>
 
     {% if not comment.parent_id %}
       <div class="comment-reply-form" x-show="showReply" x-cloak>
-        <form
-          method="post"
-          action="{% url 'comments:reply' comment_pk=comment.id %}"
-          hx-post="{% url 'comments:reply' comment_pk=comment.id %}"
-          hx-target="#replies-{{ comment.id }}"
-          hx-swap="beforeend"
-          x-on:htmx:after-request="if (event.detail.successful) { showReply = false; $el.reset(); }"
-        >
-          {% csrf_token %}
-          <textarea name="body" rows="3" placeholder="Write a reply…" required></textarea>
-          <button type="submit" class="btn btn-primary btn-sm">Post reply</button>
-        </form>
+        {% include "comments/_reply_form.html" with comment=comment %}
       </div>
 
       <div class="comment-replies" id="replies-{{ comment.id }}">
         {% for reply in comment.replies.all %}
-          {% include "comments/_comment.html" with comment=reply post=post thread_root=False %}
+          {% if not reply.is_hidden %}
+            {% include "comments/_comment.html" with comment=reply post=post thread_root=False %}
+          {% endif %}
         {% endfor %}
       </div>
     {% endif %}

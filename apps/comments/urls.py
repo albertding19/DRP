@@ -23,4 +23,5 @@ urlpatterns = [
     ),
     path("comments/<int:comment_pk>/reply/", views.reply, name="reply"),
     path("comments/<int:comment_pk>/delete/", views.delete, name="delete"),
+    path("comments/<int:comment_pk>/report/", views.report, name="report"),
 ]

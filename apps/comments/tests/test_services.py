@@ -6,8 +6,13 @@ import pytest
 from django.core.exceptions import ValidationError
 
 from apps.accounts.models import User
-from apps.comments.models import Comment
-from apps.comments.services import create_comment, soft_delete_comment
+from apps.comments.models import Comment, CommentReport
+from apps.comments.services import (
+    REPORT_AUTO_HIDE_THRESHOLD,
+    create_comment,
+    report_comment,
+    soft_delete_comment,
+)
 from apps.posts.models import Post
 
 
@@ -97,3 +102,54 @@ class TestCommentCountSignal:
         c.save()
         post.refresh_from_db()
         assert post.comment_count == 1
+
+
+@pytest.mark.django_db
+class TestReportComment:
+    """L3 reporting service. Threshold is 3 reports → auto-hide."""
+
+    def test_single_report_increments_count_no_hide(self, author: User, post: Post) -> None:
+        c = create_comment(author=author, post=post, body="x")
+        reporter = User.objects.create_anonymous(nickname="reporter1")
+        count, just_hidden = report_comment(comment=c, reporter=reporter)
+        assert count == 1
+        assert just_hidden is False
+        c.refresh_from_db()
+        assert c.report_count == 1
+        assert c.is_hidden is False
+        assert CommentReport.objects.count() == 1
+
+    def test_threshold_hides_comment(self, author: User, post: Post) -> None:
+        c = create_comment(author=author, post=post, body="x")
+        reporters = [
+            User.objects.create_anonymous(nickname=f"reporter{i}")
+            for i in range(REPORT_AUTO_HIDE_THRESHOLD)
+        ]
+        results = [report_comment(comment=c, reporter=r) for r in reporters]
+        # First two: not hidden yet. Third: just_hidden=True.
+        assert [hidden for _, hidden in results] == [False, False, True]
+        c.refresh_from_db()
+        assert c.report_count == REPORT_AUTO_HIDE_THRESHOLD
+        assert c.is_hidden is True
+
+    def test_same_reporter_is_idempotent(self, author: User, post: Post) -> None:
+        c = create_comment(author=author, post=post, body="x")
+        reporter = User.objects.create_anonymous(nickname="same_reporter")
+        a = report_comment(comment=c, reporter=reporter)
+        b = report_comment(comment=c, reporter=reporter)
+        assert a == (1, False)
+        assert b == (1, False)
+        c.refresh_from_db()
+        assert c.report_count == 1
+        assert CommentReport.objects.filter(comment=c).count() == 1
+
+    def test_above_threshold_doesnt_re_hide(self, author: User, post: Post) -> None:
+        """Once `is_hidden=True`, the fourth+ reporter's call returns
+        just_hidden=False (the hide already happened)."""
+        c = create_comment(author=author, post=post, body="x")
+        reporters = [User.objects.create_anonymous(nickname=f"reporter_x{i}") for i in range(4)]
+        results = [report_comment(comment=c, reporter=r) for r in reporters]
+        assert [hidden for _, hidden in results] == [False, False, True, False]
+        c.refresh_from_db()
+        assert c.report_count == 4
+        assert c.is_hidden is True
