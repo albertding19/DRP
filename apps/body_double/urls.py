@@ -15,6 +15,7 @@ urlpatterns = [
     path("", views.index, name="index"),
     path("find/", views.find, name="find"),
     path("waiting/", views.waiting, name="waiting"),
+    path("status/", views.status, name="status"),
     path("room/<int:session_id>/", views.room, name="room"),
     path("leave/", views.leave, name="leave"),
     path("sessions/<int:session_id>/end/", views.end, name="end"),
