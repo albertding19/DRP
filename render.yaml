@@ -19,10 +19,7 @@
 # block below.
 
 previews:
-  # Auto-create a preview environment for every PR opened on this repo.
-  # The PR's branch is deployed to a temporary `*.onrender.com` URL; Render
-  # comments the URL on the GitHub PR so reviewers can poke it live.
-  generation: automatic
+  generation: manual
   # Idle previews are deleted after 7 days to keep the workspace tidy and
   # stop free-tier services from sleeping forever on stale PRs.
   expireAfterDays: 7
