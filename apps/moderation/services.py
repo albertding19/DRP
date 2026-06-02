@@ -65,16 +65,34 @@ def contains_abusive_language(text: str) -> bool:
 
 def _strip_markdown_fence(text: str) -> str:
     """Strip ``` or ```json fences from a Claude response so the inner
-    JSON parses. Tolerant: returns input unchanged if no fence detected."""
+    JSON parses. Tolerant: returns input unchanged if no fence detected.
+
+    Strips the OPENING fence; trailing content (closing fence + any
+    commentary Claude appends) is left for `_parse_lenient_json` to ignore.
+    """
     s = text.strip()
     if s.startswith("```"):
         # Drop the opening fence line (could be "```" or "```json").
         s = s.split("\n", 1)[-1] if "\n" in s else s[3:]
-        # Drop the closing fence.
-        if s.endswith("```"):
-            s = s[:-3]
-        s = s.strip()
     return s
+
+
+def _parse_lenient_json(text: str) -> dict | None:
+    """Parse the first JSON object inside `text`, ignoring anything after.
+
+    Returns the parsed dict, or None if no valid JSON object can be
+    located. Tolerates leading whitespace + leading commentary before the
+    JSON, and any trailing content (closing markdown fence, extra
+    explanation) after the JSON object.
+    """
+    start = text.find("{")
+    if start < 0:
+        return None
+    try:
+        obj, _ = json.JSONDecoder().raw_decode(text[start:])
+    except json.JSONDecodeError:
+        return None
+    return obj if isinstance(obj, dict) else None
 
 
 def judge_with_claude(text: str) -> tuple[bool, str]:
@@ -128,16 +146,19 @@ def judge_with_claude(text: str) -> tuple[bool, str]:
             logger.warning("Claude L2 judge returned no text content")
             return False, ""
 
-        # Claude sometimes wraps the JSON in markdown code fences despite
-        # the rubric asking for raw JSON. Strip them defensively before
-        # parsing — observed behaviour as of claude-haiku-4-5-20251001.
-        parsed = json.loads(_strip_markdown_fence(raw))
+        # Claude variously wraps the JSON in markdown code fences and/or
+        # appends commentary after it. Two-step defence:
+        #   1. Strip any leading ```json … ``` wrapper.
+        #   2. Use raw_decode (not json.loads) so trailing content after the
+        #      JSON object doesn't trip "Extra data" errors.
+        # Both behaviours observed on claude-haiku-4-5-20251001.
+        parsed = _parse_lenient_json(_strip_markdown_fence(raw))
+        if parsed is None:
+            logger.warning("Claude L2 judge returned non-parseable JSON: %r", raw[:200])
+            return False, ""
         block = bool(parsed.get("block", False))
         reason = str(parsed.get("reason", "") or "").strip()
         return block, reason
-    except json.JSONDecodeError as exc:
-        logger.warning("Claude L2 judge returned non-JSON: %s", exc)
-        return False, ""
     except Exception as exc:  # noqa: BLE001
         # Catch everything: network errors, anthropic-side errors, timeouts.
         # The whole point of fail-open is that L2 cannot take the site down.

@@ -13,7 +13,11 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from apps.moderation.services import _strip_markdown_fence, judge_with_claude
+from apps.moderation.services import (
+    _parse_lenient_json,
+    _strip_markdown_fence,
+    judge_with_claude,
+)
 
 
 def _make_message(text_block: str):
@@ -34,20 +38,56 @@ class TestStripMarkdownFence:
     def test_no_fence_returns_unchanged(self):
         assert _strip_markdown_fence('{"block": true}') == '{"block": true}'
 
-    def test_plain_fence(self):
+    def test_plain_fence_strips_opening(self):
         wrapped = '```\n{"block": true}\n```'
-        assert _strip_markdown_fence(wrapped) == '{"block": true}'
+        # Opening only — trailing fence is left for _parse_lenient_json.
+        assert _strip_markdown_fence(wrapped).startswith('{"block": true}')
 
-    def test_json_fence(self):
+    def test_json_fence_strips_opening(self):
         wrapped = '```json\n{"block": false, "reason": ""}\n```'
-        assert _strip_markdown_fence(wrapped) == '{"block": false, "reason": ""}'
+        assert _strip_markdown_fence(wrapped).startswith('{"block": false')
 
     def test_fence_with_surrounding_whitespace(self):
-        wrapped = '  \n```json\n{"block": true}\n```\n  '
-        assert _strip_markdown_fence(wrapped) == '{"block": true}'
+        wrapped = '  \n```json\n{"block": true}\n```'
+        assert _strip_markdown_fence(wrapped).startswith('{"block": true}')
 
     def test_empty_input(self):
         assert _strip_markdown_fence("") == ""
+
+
+class TestParseLenientJSON:
+    """`_parse_lenient_json` finds the first JSON object and ignores trailing
+    content — observed real-world case: Claude appends an explanation
+    paragraph after the JSON."""
+
+    def test_plain_json_object(self):
+        assert _parse_lenient_json('{"block": true}') == {"block": True}
+
+    def test_object_followed_by_commentary(self):
+        # The original "Shivashish" bug.
+        text = '{"block": false, "reason": ""}\n\nThis is a casual compliment.'
+        assert _parse_lenient_json(text) == {"block": False, "reason": ""}
+
+    def test_object_followed_by_closing_fence_and_commentary(self):
+        text = '{"block": true, "reason": "x"}\n```\n\nExplanation here.'
+        assert _parse_lenient_json(text) == {"block": True, "reason": "x"}
+
+    def test_leading_prose_before_object(self):
+        text = 'Here is my decision: {"block": true}'
+        assert _parse_lenient_json(text) == {"block": True}
+
+    def test_no_object_returns_none(self):
+        assert _parse_lenient_json("just text, no JSON") is None
+
+    def test_malformed_object_returns_none(self):
+        assert _parse_lenient_json("{not valid json}") is None
+
+    def test_array_not_dict_returns_none(self):
+        """Top-level array is valid JSON but not the shape we expect."""
+        assert _parse_lenient_json("[1, 2, 3]") is None
+
+    def test_empty_string(self):
+        assert _parse_lenient_json("") is None
 
 
 class TestJudgeParsing:
@@ -75,6 +115,20 @@ class TestJudgeParsing:
             block, reason = judge_with_claude("some content")
         assert block is True
         assert reason == "Spam detected."
+
+    def test_block_with_fence_and_trailing_commentary(self, settings):
+        """The 'Shivashish' regression: Claude appends an explanation
+        paragraph after the closing fence."""
+        settings.ANTHROPIC_API_KEY = "sk-test"
+        fake_client = MagicMock()
+        fake_client.messages.create.return_value = _make_message(
+            '```json\n{"block": true, "reason": "Personal attack."}\n```\n\n'
+            "This is mocking someone's appearance using slang."
+        )
+        with patch("anthropic.Anthropic", return_value=fake_client):
+            block, reason = judge_with_claude("name is chopped")
+        assert block is True
+        assert reason == "Personal attack."
 
     def test_block_false_clean(self, settings):
         settings.ANTHROPIC_API_KEY = "sk-test"
@@ -130,6 +184,18 @@ class TestJudgeFailOpen:
         settings.ANTHROPIC_API_KEY = "sk-test"
         fake_client = MagicMock()
         fake_client.messages.create.return_value = _make_message("I cannot respond in JSON, sorry.")
+        with patch("anthropic.Anthropic", return_value=fake_client):
+            block, reason = judge_with_claude("anything")
+        assert block is False
+        assert reason == ""
+
+    def test_no_json_object_at_all_fails_open(self, settings):
+        """Response with no `{` anywhere — fails open via _parse_lenient_json."""
+        settings.ANTHROPIC_API_KEY = "sk-test"
+        fake_client = MagicMock()
+        fake_client.messages.create.return_value = _make_message(
+            "Sure, here is my analysis: this content is fine."
+        )
         with patch("anthropic.Anthropic", return_value=fake_client):
             block, reason = judge_with_claude("anything")
         assert block is False
