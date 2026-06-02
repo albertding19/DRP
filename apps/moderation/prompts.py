@@ -25,7 +25,16 @@ norms.
 BLOCK if the content contains any of:
 - Slurs or targeted harassment of any protected group (race, religion, \
 sexuality, gender identity, disability, etc.)
-- Personal attacks against a specific named user
+- Personal attacks, insults, or mockery directed at ANY named person — \
+whether they are a member of this community or a third party (friend, \
+classmate, family member, public figure). This includes:
+  * direct insults: "Sarah is ugly", "John is stupid", "Maria is a loser"
+  * modern slang used as an insult: "Bob is mid", "Alex is chopped" \
+(slang for ugly/unkempt), "Liam is L" or "ratio'd"
+  * mockery of someone's appearance, intelligence, character, or behaviour
+  * passive-aggressive jabs at a named individual
+  If the message references a specific person by name and reads as \
+negative or demeaning about them, block it.
 - Sexual content involving minors, or non-consensual sexual content
 - Doxing (real-world identifying information about another person)
 - Explicit calls for self-harm or violence directed at another person or group
