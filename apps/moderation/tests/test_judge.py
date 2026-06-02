@@ -13,7 +13,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from apps.moderation.services import judge_with_claude
+from apps.moderation.services import _strip_markdown_fence, judge_with_claude
 
 
 def _make_message(text_block: str):
@@ -24,6 +24,30 @@ def _make_message(text_block: str):
     msg = MagicMock()
     msg.content = [block]
     return msg
+
+
+class TestStripMarkdownFence:
+    """Defensive parser-helper — Claude sometimes wraps JSON in code fences
+    despite the rubric asking for raw JSON. Observed behaviour on
+    claude-haiku-4-5-20251001."""
+
+    def test_no_fence_returns_unchanged(self):
+        assert _strip_markdown_fence('{"block": true}') == '{"block": true}'
+
+    def test_plain_fence(self):
+        wrapped = '```\n{"block": true}\n```'
+        assert _strip_markdown_fence(wrapped) == '{"block": true}'
+
+    def test_json_fence(self):
+        wrapped = '```json\n{"block": false, "reason": ""}\n```'
+        assert _strip_markdown_fence(wrapped) == '{"block": false, "reason": ""}'
+
+    def test_fence_with_surrounding_whitespace(self):
+        wrapped = '  \n```json\n{"block": true}\n```\n  '
+        assert _strip_markdown_fence(wrapped) == '{"block": true}'
+
+    def test_empty_input(self):
+        assert _strip_markdown_fence("") == ""
 
 
 class TestJudgeParsing:
@@ -39,6 +63,18 @@ class TestJudgeParsing:
             block, reason = judge_with_claude("some content")
         assert block is True
         assert reason == "This contains a slur."
+
+    def test_block_true_with_markdown_fence(self, settings):
+        """The real-world case: Claude wraps JSON in ```json … ```."""
+        settings.ANTHROPIC_API_KEY = "sk-test"
+        fake_client = MagicMock()
+        fake_client.messages.create.return_value = _make_message(
+            '```json\n{"block": true, "reason": "Spam detected."}\n```'
+        )
+        with patch("anthropic.Anthropic", return_value=fake_client):
+            block, reason = judge_with_claude("some content")
+        assert block is True
+        assert reason == "Spam detected."
 
     def test_block_false_clean(self, settings):
         settings.ANTHROPIC_API_KEY = "sk-test"
