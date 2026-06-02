@@ -3,7 +3,7 @@
 {% block title %}Body double session — {{ PROJECT_NAME }}{% endblock %}
 
 {% block content %}
-<section class="body-double-room">
+<section class="body-double-room" x-data="{ chatOpen: true, unread: 0 }">
   <header class="room-header">
     <h1>Body double session</h1>
     <p class="room-meta">
@@ -11,11 +11,45 @@
     </p>
   </header>
 
-  <div id="participants" class="participants" aria-live="polite"></div>
+  <div class="room-layout" :class="chatOpen ? 'with-chat' : 'no-chat'">
+    <!-- Video area: remote participant fills the canvas; local self-view
+         floats as a small mirrored picture-in-picture tile in the corner. -->
+    <div id="video-area" class="video-area" aria-live="polite">
+      <div id="participants" class="participants"></div>
+      <div id="self-view" class="self-view" aria-label="Your own camera">
+        <span class="self-view-label">You</span>
+      </div>
+    </div>
+
+    <!-- Chat panel: data-channel-backed; messages are ephemeral (not
+         persisted). Toggleable via the Chat button in the controls below. -->
+    <aside class="chat-panel" x-show="chatOpen" x-cloak aria-label="Chat with your body double">
+      <div id="chat-messages" class="chat-messages" role="log" aria-live="polite"></div>
+      <form id="chat-form" class="chat-form">
+        <input
+          id="chat-input"
+          type="text"
+          maxlength="500"
+          placeholder="Type a message…"
+          autocomplete="off"
+          aria-label="Type a chat message"
+        >
+        <button type="submit" class="btn btn-primary btn-sm">Send</button>
+      </form>
+    </aside>
+  </div>
 
   <div id="local-controls" class="controls">
     <button id="toggle-mic" type="button" class="btn btn-secondary">🎤 Mute</button>
     <button id="toggle-cam" type="button" class="btn btn-secondary">📷 Camera off</button>
+    <button
+      type="button"
+      class="btn btn-secondary"
+      x-on:click="chatOpen = !chatOpen; if (chatOpen) unread = 0;"
+    >
+      <span x-text="chatOpen ? '💬 Hide chat' : '💬 Show chat'"></span>
+      <span x-show="!chatOpen && unread > 0" x-cloak class="unread-badge" x-text="unread"></span>
+    </button>
     <form id="end-form" method="post" action="{% url 'body_double:end' session_id=session.id %}" style="display:inline">
       {% csrf_token %}
       <button id="leave" type="submit" class="btn btn-danger">End session</button>
@@ -30,8 +64,13 @@
 (async () => {
   const wsUrl = "{{ ws_url }}";
   const token = "{{ token }}";
+  const localIdentity = "{{ request.user.nickname|escapejs }}";
   const statusEl = document.getElementById("status");
   const participantsEl = document.getElementById("participants");
+  const selfViewEl = document.getElementById("self-view");
+  const chatMessagesEl = document.getElementById("chat-messages");
+  const chatForm = document.getElementById("chat-form");
+  const chatInput = document.getElementById("chat-input");
   const setStatus = (s) => { statusEl.textContent = s; };
 
   if (!wsUrl) {
@@ -48,8 +87,10 @@
     dynacast: true,
   });
 
+  /* ----------------------------- video tiles ----------------------------- */
+
   /* Render a remote participant's audio + video tracks. */
-  const attachTrack = (track, participantId) => {
+  const attachRemoteTrack = (track, participantId) => {
     let card = document.getElementById("p-" + participantId);
     if (!card) {
       card = document.createElement("div");
@@ -66,14 +107,123 @@
     card.appendChild(el);
   };
 
+  /* Render the LOCAL participant's video as a mirrored picture-in-picture.
+     Local audio isn't attached — you don't want to hear yourself. */
+  const attachLocalVideo = (track) => {
+    /* Strip any old video element so we don't stack duplicates if the
+       user toggles their camera. */
+    selfViewEl.querySelectorAll("video").forEach((v) => v.remove());
+    const el = track.attach();
+    el.classList.add("self-view-track");
+    selfViewEl.appendChild(el);
+    selfViewEl.classList.add("active");
+  };
+
+  const removeLocalVideo = () => {
+    selfViewEl.querySelectorAll("video").forEach((v) => v.remove());
+    selfViewEl.classList.remove("active");
+  };
+
+  /* ----------------------------- chat panel ----------------------------- */
+
+  const formatTime = (ts) => {
+    const d = new Date(ts);
+    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  };
+
+  const appendMessage = ({ sender, text, ts, mine }) => {
+    const row = document.createElement("div");
+    row.className = "chat-message" + (mine ? " mine" : "");
+    const meta = document.createElement("p");
+    meta.className = "chat-meta";
+    meta.textContent = (mine ? "You" : sender) + " · " + formatTime(ts);
+    const body = document.createElement("p");
+    body.className = "chat-body";
+    body.textContent = text;
+    row.appendChild(meta);
+    row.appendChild(body);
+    chatMessagesEl.appendChild(row);
+    /* Auto-scroll to the latest message. */
+    chatMessagesEl.scrollTop = chatMessagesEl.scrollHeight;
+  };
+
+  const appendSystem = (text) => {
+    const row = document.createElement("p");
+    row.className = "chat-system";
+    row.textContent = text;
+    chatMessagesEl.appendChild(row);
+    chatMessagesEl.scrollTop = chatMessagesEl.scrollHeight;
+  };
+
+  const sendChat = async (text) => {
+    if (!text) return;
+    const payload = {
+      type: "chat",
+      text: text,
+      ts: Date.now(),
+    };
+    appendMessage({ ...payload, sender: localIdentity, mine: true });
+    try {
+      const data = new TextEncoder().encode(JSON.stringify(payload));
+      await room.localParticipant.publishData(data, { reliable: true });
+    } catch (err) {
+      console.error("Chat send failed:", err);
+    }
+  };
+
+  chatForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const text = chatInput.value.trim();
+    if (!text) return;
+    chatInput.value = "";
+    await sendChat(text);
+  });
+
+  /* ----------------------------- room events ----------------------------- */
+
   room
     .on(LivekitClient.RoomEvent.TrackSubscribed, (track, _pub, participant) => {
-      attachTrack(track, participant.identity);
+      attachRemoteTrack(track, participant.identity);
     })
     .on(LivekitClient.RoomEvent.TrackUnsubscribed, (track) => track.detach())
+    .on(LivekitClient.RoomEvent.LocalTrackPublished, (publication) => {
+      if (publication.kind === LivekitClient.Track.Kind.Video && publication.track) {
+        attachLocalVideo(publication.track);
+      }
+    })
+    .on(LivekitClient.RoomEvent.LocalTrackUnpublished, (publication) => {
+      if (publication.kind === LivekitClient.Track.Kind.Video) {
+        removeLocalVideo();
+      }
+    })
+    .on(LivekitClient.RoomEvent.DataReceived, (payload, participant) => {
+      try {
+        const data = JSON.parse(new TextDecoder().decode(payload));
+        if (data.type !== "chat" || !data.text) return;
+        appendMessage({
+          sender: participant ? participant.identity : "unknown",
+          text: data.text,
+          ts: data.ts || Date.now(),
+          mine: false,
+        });
+        /* Bump unread count if chat is currently closed. Alpine reads
+           this through the data-attr pattern below. */
+        const root = document.querySelector(".body-double-room");
+        if (root && root.__x) {
+          if (!root.__x.$data.chatOpen) root.__x.$data.unread++;
+        }
+      } catch (err) {
+        /* Non-JSON or unknown shape — ignore. */
+      }
+    })
+    .on(LivekitClient.RoomEvent.ParticipantConnected, (participant) => {
+      appendSystem(participant.identity + " joined.");
+      setStatus("Connected.");
+    })
     .on(LivekitClient.RoomEvent.ParticipantDisconnected, (participant) => {
       const card = document.getElementById("p-" + participant.identity);
       if (card) card.remove();
+      appendSystem(participant.identity + " left.");
       setStatus("Your body double left the session.");
     })
     .on(LivekitClient.RoomEvent.Disconnected, () => {
@@ -90,7 +240,7 @@
     return;
   }
 
-  /* Mute / camera toggles. */
+  /* Mute / camera toggles. Camera off should also pull down the self-view. */
   document.getElementById("toggle-mic").addEventListener("click", async (e) => {
     const enabled = !room.localParticipant.isMicrophoneEnabled;
     await room.localParticipant.setMicrophoneEnabled(enabled);
@@ -100,28 +250,66 @@
     const enabled = !room.localParticipant.isCameraEnabled;
     await room.localParticipant.setCameraEnabled(enabled);
     e.target.textContent = enabled ? "📷 Camera off" : "📷 Camera on";
+    if (!enabled) removeLocalVideo();
   });
 
-  /* When user clicks "End session", disconnect from LiveKit first then
-     submit the end-session form so the server marks the session ended. */
-  document.getElementById("end-form").addEventListener("submit", (e) => {
+  /* Tear down LiveKit before submitting the end-session form so the
+     server-side state matches what the participants see. */
+  document.getElementById("end-form").addEventListener("submit", (_e) => {
     try { room.disconnect(); } catch (_) { /* ignore */ }
   });
 })();
 </script>
 
 <style>
-  .body-double-room { max-width: 900px; margin: 0 auto; padding: 1rem 0; }
-  .room-header { display: flex; align-items: baseline; gap: 1rem; margin-bottom: 1.5rem; }
+  [x-cloak] { display: none !important; }
+  .body-double-room { max-width: 1200px; margin: 0 auto; padding: 1rem 0; }
+  .room-header { display: flex; align-items: baseline; gap: 1rem; margin-bottom: 1.25rem; }
   .room-header h1 { margin: 0; font-size: 1.5rem; }
   .room-meta { color: var(--fg-muted); margin: 0; }
-  .participants { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; background: #111; border-radius: 12px; padding: 1rem; min-height: 360px; }
+
+  /* Main layout: video on the left, chat on the right. Collapses to a
+     single column below ~860px. */
+  .room-layout { display: grid; gap: 1rem; align-items: stretch; }
+  .room-layout.with-chat { grid-template-columns: 1fr minmax(280px, 340px); }
+  .room-layout.no-chat   { grid-template-columns: 1fr; }
+  @media (max-width: 860px) {
+    .room-layout.with-chat { grid-template-columns: 1fr; }
+  }
+
+  /* Video area: dark canvas, remote participants stretch to fill, local
+     self-view floats in the bottom-right as picture-in-picture. */
+  .video-area { position: relative; background: #111; border-radius: 12px; padding: 1rem; min-height: 360px; }
+  .participants { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; height: 100%; }
   .participant-card { position: relative; background: #000; border-radius: 8px; overflow: hidden; aspect-ratio: 16/9; }
   .participant-label { position: absolute; bottom: 0.5rem; left: 0.75rem; color: white; background: rgba(0,0,0,0.5); padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.8rem; margin: 0; z-index: 1; }
   .participant-track { width: 100%; height: 100%; object-fit: cover; display: block; }
-  .controls { display: flex; gap: 0.5rem; align-items: center; margin: 1.25rem 0; flex-wrap: wrap; }
+
+  /* Self-view: small mirrored tile, picture-in-picture-style. */
+  .self-view { position: absolute; bottom: 1.25rem; right: 1.25rem; width: 160px; aspect-ratio: 16/9; background: #000; border: 2px solid white; border-radius: 8px; overflow: hidden; z-index: 2; box-shadow: 0 4px 12px rgba(0,0,0,0.4); display: none; }
+  .self-view.active { display: block; }
+  .self-view-track { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); /* mirror */ display: block; }
+  .self-view-label { position: absolute; bottom: 0.25rem; left: 0.4rem; color: white; background: rgba(0,0,0,0.6); padding: 0.1rem 0.4rem; border-radius: 3px; font-size: 0.7rem; z-index: 1; }
+  @media (max-width: 480px) { .self-view { width: 100px; bottom: 0.75rem; right: 0.75rem; } }
+
+  /* Chat panel: scrollable message log + send form. */
+  .chat-panel { display: flex; flex-direction: column; background: white; border: 1px solid var(--border); border-radius: 12px; min-height: 360px; max-height: 70vh; }
+  .chat-messages { flex: 1; overflow-y: auto; padding: 0.75rem; display: flex; flex-direction: column; gap: 0.5rem; }
+  .chat-message { background: #f5f6f8; border-radius: 8px; padding: 0.4rem 0.6rem; max-width: 92%; align-self: flex-start; }
+  .chat-message.mine { background: rgba(37, 99, 235, 0.12); align-self: flex-end; }
+  .chat-meta { font-size: 0.7rem; color: var(--fg-muted); margin: 0 0 0.15rem; }
+  .chat-body { font-size: 0.9rem; color: var(--fg); margin: 0; white-space: pre-wrap; word-wrap: break-word; }
+  .chat-system { font-size: 0.75rem; color: var(--fg-muted); text-align: center; font-style: italic; margin: 0.25rem 0; }
+  .chat-form { display: flex; gap: 0.4rem; padding: 0.5rem; border-top: 1px solid var(--border); }
+  .chat-form input { flex: 1; font-size: 0.9rem; padding: 0.4rem 0.6rem; border: 1px solid var(--border); border-radius: 6px; }
+  .btn-sm { font-size: 0.85rem; padding: 0.4rem 0.85rem; border-radius: 6px; }
+
+  /* Controls bar (mic / cam / chat-toggle / end) sits below the layout. */
+  .controls { display: flex; gap: 0.5rem; align-items: center; margin: 1rem 0; flex-wrap: wrap; }
   .btn-danger { background: #c00; color: white; border-color: #c00; padding: 0.5rem 1.25rem; border-radius: 6px; cursor: pointer; }
   .btn-danger:hover { opacity: 0.9; }
+  .unread-badge { background: #c00; color: white; border-radius: 999px; padding: 0 0.4rem; font-size: 0.7rem; margin-left: 0.4rem; }
+
   .status { font-size: 0.875rem; color: var(--fg-muted); margin: 0.5rem 0; }
 </style>
 {% endblock %}
