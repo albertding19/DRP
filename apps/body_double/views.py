@@ -17,8 +17,9 @@ from __future__ import annotations
 
 from django.conf import settings
 from django.contrib.auth.decorators import login_required
-from django.http import HttpRequest, HttpResponse
+from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.utils.module_loading import import_string
 from django.views.decorators.http import require_GET, require_POST
 
@@ -87,6 +88,36 @@ def waiting(request: HttpRequest) -> HttpResponse:
         "body_double/waiting.html",
         {"ticket": ticket, "wait_timeout_s": settings.BODY_DOUBLE_WAIT_TIMEOUT_S},
     )
+
+
+@login_required
+@require_GET
+def status(request: HttpRequest) -> JsonResponse:
+    """JSON polling endpoint for the waiting page.
+
+    The waiting page WS is the fast path (sub-100ms after match), but the
+    page also polls this every 5 seconds as a fallback in case the WS
+    misses the event (e.g. broadcast fires while WS is still
+    handshaking). The polling guarantees the user eventually sees the
+    redirect even if the WS path fails entirely.
+
+    Returns:
+      {"status": "waiting", "matched": false, "room_url": null}
+      {"status": "matched", "matched": true,  "room_url": "/body-double/room/N/"}
+      {"status": null,      "matched": false, "room_url": null}  ← no active ticket
+    """
+    ticket = get_active_ticket(user=request.user)
+    if ticket is None:
+        return JsonResponse({"status": None, "matched": False, "room_url": None})
+    if ticket.status == PoolTicket.STATUS_MATCHED and ticket.session_id:
+        return JsonResponse(
+            {
+                "status": PoolTicket.STATUS_MATCHED,
+                "matched": True,
+                "room_url": reverse("body_double:room", kwargs={"session_id": ticket.session_id}),
+            }
+        )
+    return JsonResponse({"status": ticket.status, "matched": False, "room_url": None})
 
 
 @login_required

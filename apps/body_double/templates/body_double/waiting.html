@@ -7,25 +7,40 @@
   class="body-double-waiting"
   x-data="{ elapsed: 0, timedOut: false }"
   x-init="
+    /* Open the shared WebSocket via the same store used by the feed and
+       post pages. Auto-reconnects with exponential backoff if the WS
+       drops mid-wait. */
+    $store.ws.connect('/ws/matchmaking/{{ request.user.id }}/');
+
     /* Elapsed-time counter, ticking every second. */
     setInterval(() => {
       elapsed++;
       if (elapsed >= {{ wait_timeout_s }}) { timedOut = true; }
     }, 1000);
 
-    /* WebSocket listener: redirect to the room as soon as a partner
-       enters the pool. The server pushes `match_found` with the room URL
-       directly in the payload. */
-    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-    const ws = new WebSocket(`${proto}://${location.host}/ws/matchmaking/{{ request.user.id }}/`);
-    ws.onmessage = (e) => {
+    /* Polling fallback. If the WS misses the match_found event for any
+       reason (race during initial connect, transient disconnect, etc.),
+       this catches it within 5 seconds. The WS path is faster (<100ms)
+       but this guarantees we don't strand the user. */
+    setInterval(async () => {
       try {
-        const msg = JSON.parse(e.data);
-        if (msg.type === 'match_found' && msg.payload && msg.payload.room_url) {
-          window.location.href = msg.payload.room_url;
+        const r = await fetch('{% url 'body_double:status' %}', {
+          headers: { 'Accept': 'application/json' },
+          credentials: 'same-origin',
+        });
+        if (!r.ok) return;
+        const data = await r.json();
+        if (data.matched && data.room_url) {
+          window.location.href = data.room_url;
         }
-      } catch (err) { /* malformed message — ignore */ }
-    };
+      } catch { /* network blip — try again on the next tick */ }
+    }, 5000);
+  "
+  x-on:ws:match_found.window="
+    /* Fast path: server pushed a match event. Redirect immediately. */
+    if ($event.detail && $event.detail.room_url) {
+      window.location.href = $event.detail.room_url;
+    }
   "
 >
   <h1>Looking for a body double…</h1>

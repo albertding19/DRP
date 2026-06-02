@@ -188,6 +188,41 @@ class TestLeaveView:
 
 
 @pytest.mark.django_db(transaction=True)
+class TestStatusView:
+    """JSON polling endpoint used by the waiting page as a WS fallback."""
+
+    def test_no_ticket_returns_null_status(self) -> None:
+        client, _ = _authed_client("statusnone")
+        r = client.get("/body-double/status/")
+        assert r.status_code == 200
+        data = r.json()
+        assert data == {"status": None, "matched": False, "room_url": None}
+
+    def test_waiting_ticket_returns_waiting(self) -> None:
+        client, user = _authed_client("statuswait")
+        PoolTicket.objects.create(user=user, status=PoolTicket.STATUS_WAITING)
+        r = client.get("/body-double/status/")
+        data = r.json()
+        assert data["status"] == "waiting"
+        assert data["matched"] is False
+        assert data["room_url"] is None
+
+    def test_matched_ticket_returns_room_url(self) -> None:
+        client, user = _authed_client("statusmatched")
+        session = BodyDoubleSession.objects.create(room_id="abc", user_a=user, user_b=user)
+        PoolTicket.objects.create(user=user, status=PoolTicket.STATUS_MATCHED, session=session)
+        r = client.get("/body-double/status/")
+        data = r.json()
+        assert data["status"] == "matched"
+        assert data["matched"] is True
+        assert data["room_url"] == f"/body-double/room/{session.id}/"
+
+    def test_unauthed_redirected(self) -> None:
+        r = Client().get("/body-double/status/")
+        assert r.status_code == 302
+
+
+@pytest.mark.django_db(transaction=True)
 class TestEndView:
     def test_participant_can_end(self) -> None:
         client, user = _authed_client("endpart")
