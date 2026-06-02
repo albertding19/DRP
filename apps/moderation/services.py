@@ -95,22 +95,68 @@ def _parse_lenient_json(text: str) -> dict | None:
     return obj if isinstance(obj, dict) else None
 
 
+# Tool schema used to force structured output from Claude. Combined with
+# `tool_choice={"type": "tool", "name": ...}` below, Claude is forced to
+# produce a `tool_use` block whose `input` is already a Python dict —
+# no JSON parsing, no markdown stripping, no commentary handling needed.
+MODERATION_TOOL = {
+    "name": "submit_moderation_decision",
+    "description": (
+        "Submit the final moderation decision for the user-submitted content. "
+        "`block` is True if the content violates the rubric. "
+        "`reason` is the one-sentence supportive message shown to the user "
+        "when blocked (empty string when not blocking)."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "block": {
+                "type": "boolean",
+                "description": "Whether to block this content.",
+            },
+            "reason": {
+                "type": "string",
+                "description": (
+                    "One short, supportive sentence shown to the user when blocked, "
+                    "or empty string when not blocking."
+                ),
+            },
+        },
+        "required": ["block", "reason"],
+    },
+}
+
+
 def judge_with_claude(text: str) -> tuple[bool, str]:
-    """L2 — send `text` to Claude Haiku with the ADHD-calibrated rubric.
+    """L2 — send `text` to Claude with the ADHD-calibrated rubric.
 
     Returns `(should_block, user_facing_reason)`. The reason is whatever
     Claude generated and is meant to be shown to the user verbatim.
 
-    Fail-open semantics: any of the following return `(False, "")` so the
-    submission is allowed through (L1 still ran, L3 still catches):
-      - `settings.ANTHROPIC_API_KEY` is empty
-      - `text` is empty / whitespace only
-      - the `anthropic` SDK raises any exception
-      - the API call exceeds `settings.MODERATION_CLAUDE_TIMEOUT_S`
-      - Claude returns malformed JSON
+    Three Sonnet-tier latency optimizations are stacked here, all of which
+    also help Haiku marginally:
 
-    Each non-trivial failure is logged at WARNING level so admins can see
-    L2 outages without users being affected.
+      1. **Prompt caching** — the system prompt (≈500 input tokens of
+         rubric) is marked `cache_control: ephemeral` so subsequent calls
+         within ~5 minutes reuse the cached prefix instead of reprocessing.
+         Cold start unchanged; warm requests ~3-5× faster on system-prompt
+         processing AND ~90% cheaper on cached input tokens.
+
+      2. **Tool-use forced via `tool_choice`** — Claude returns a
+         structured `tool_use` block whose `input` is already a dict. No
+         markdown wrappers, no trailing commentary, no JSON parsing.
+         Eliminates the entire class of parsing bugs and saves ~50-100 ms
+         of free-text generation.
+
+      3. **`max_tokens=80`** — caps the worst-case generation time. The
+         tool-use payload for our schema is ~30 tokens; 80 leaves headroom
+         for a one-sentence rationale and protects against pathological
+         long outputs.
+
+    Fail-open semantics unchanged: any error path (missing key, empty
+    text, SDK exception, timeout, missing tool_use block, unparseable
+    fallback text) returns `(False, "")` so a peer-support forum never
+    silently goes offline.
     """
     if not (text or "").strip():
         return False, ""
@@ -131,34 +177,47 @@ def judge_with_claude(text: str) -> tuple[bool, str]:
         )
         message = client.messages.create(
             model=getattr(settings, "MODERATION_CLAUDE_MODEL", "claude-haiku-4-5-20251001"),
-            max_tokens=200,
-            system=JUDGE_SYSTEM_PROMPT,
+            max_tokens=80,
+            # Wrap the system prompt as a list with cache_control. The
+            # rubric is identical on every call, so Anthropic caches the
+            # processed prefix and reuses it across requests within
+            # the cache TTL.
+            system=[
+                {
+                    "type": "text",
+                    "text": JUDGE_SYSTEM_PROMPT,
+                    "cache_control": {"type": "ephemeral"},
+                }
+            ],
+            tools=[MODERATION_TOOL],
+            # Force Claude to call exactly this tool — never free-text.
+            tool_choice={"type": "tool", "name": MODERATION_TOOL["name"]},
             messages=[{"role": "user", "content": text}],
         )
-        # Claude messages API returns a list of content blocks; we want the
-        # first text block.
-        raw = ""
-        for block in message.content:
-            if getattr(block, "type", None) == "text":
-                raw = block.text
-                break
-        if not raw:
-            logger.warning("Claude L2 judge returned no text content")
-            return False, ""
 
-        # Claude variously wraps the JSON in markdown code fences and/or
-        # appends commentary after it. Two-step defence:
-        #   1. Strip any leading ```json … ``` wrapper.
-        #   2. Use raw_decode (not json.loads) so trailing content after the
-        #      JSON object doesn't trip "Extra data" errors.
-        # Both behaviours observed on claude-haiku-4-5-20251001.
-        parsed = _parse_lenient_json(_strip_markdown_fence(raw))
-        if parsed is None:
-            logger.warning("Claude L2 judge returned non-parseable JSON: %r", raw[:200])
-            return False, ""
-        block = bool(parsed.get("block", False))
-        reason = str(parsed.get("reason", "") or "").strip()
-        return block, reason
+        # Find the forced tool_use block. tool_choice guarantees its
+        # presence, but we still defend against weird response shapes.
+        for content_block in message.content:
+            if getattr(content_block, "type", None) == "tool_use":
+                payload = content_block.input or {}
+                block = bool(payload.get("block", False))
+                reason = str(payload.get("reason", "") or "").strip()
+                return block, reason
+
+        # Defensive fallback — if for some reason Claude returns text
+        # instead of a tool_use block (shouldn't happen with forced
+        # tool_choice, but we leave the parser in place for safety),
+        # try the lenient JSON path.
+        for content_block in message.content:
+            if getattr(content_block, "type", None) == "text":
+                parsed = _parse_lenient_json(_strip_markdown_fence(content_block.text))
+                if parsed is not None:
+                    block = bool(parsed.get("block", False))
+                    reason = str(parsed.get("reason", "") or "").strip()
+                    return block, reason
+
+        logger.warning("Claude L2 judge returned no usable content block: %r", message.content)
+        return False, ""
     except Exception as exc:  # noqa: BLE001
         # Catch everything: network errors, anthropic-side errors, timeouts.
         # The whole point of fail-open is that L2 cannot take the site down.

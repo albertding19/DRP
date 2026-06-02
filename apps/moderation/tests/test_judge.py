@@ -21,12 +21,32 @@ from apps.moderation.services import (
 
 
 def _make_message(text_block: str):
-    """Build a fake `anthropic.types.Message` shape with one text content block."""
+    """Build a fake `anthropic.types.Message` with one text content block.
+
+    Used to test the legacy text-parsing fallback path (when the API for
+    some reason returns text instead of tool_use). Tool-use is the primary
+    path now — see `_make_tool_use_message`.
+    """
     block = MagicMock()
     block.type = "text"
     block.text = text_block
     msg = MagicMock()
     msg.content = [block]
+    return msg
+
+
+def _make_tool_use_message(block_decision: bool, reason: str):
+    """Build a fake `anthropic.types.Message` with one tool_use content block.
+
+    This matches the primary path: Claude is forced via `tool_choice` to
+    return a tool_use block whose `input` is already a dict — no JSON
+    parsing required.
+    """
+    tool_block = MagicMock()
+    tool_block.type = "tool_use"
+    tool_block.input = {"block": block_decision, "reason": reason}
+    msg = MagicMock()
+    msg.content = [tool_block]
     return msg
 
 
@@ -90,22 +110,67 @@ class TestParseLenientJSON:
         assert _parse_lenient_json("") is None
 
 
-class TestJudgeParsing:
-    """The judge correctly parses Claude's JSON response."""
+class TestJudgeToolUse:
+    """Primary path: Claude returns a forced `tool_use` block whose `input`
+    is already a Python dict. No JSON parsing needed."""
 
-    def test_block_true_with_reason(self, settings):
+    def test_tool_use_block_true(self, settings):
         settings.ANTHROPIC_API_KEY = "sk-test"
         fake_client = MagicMock()
-        fake_client.messages.create.return_value = _make_message(
-            '{"block": true, "reason": "This contains a slur."}'
+        fake_client.messages.create.return_value = _make_tool_use_message(
+            True, "This contains a slur."
         )
         with patch("anthropic.Anthropic", return_value=fake_client):
             block, reason = judge_with_claude("some content")
         assert block is True
         assert reason == "This contains a slur."
 
-    def test_block_true_with_markdown_fence(self, settings):
-        """The real-world case: Claude wraps JSON in ```json … ```."""
+    def test_tool_use_block_false(self, settings):
+        settings.ANTHROPIC_API_KEY = "sk-test"
+        fake_client = MagicMock()
+        fake_client.messages.create.return_value = _make_tool_use_message(False, "")
+        with patch("anthropic.Anthropic", return_value=fake_client):
+            block, reason = judge_with_claude("clean content")
+        assert block is False
+        assert reason == ""
+
+    def test_call_uses_cache_control_and_force_tool(self, settings):
+        """Smoke test that we're passing the optimisations to Claude."""
+        settings.ANTHROPIC_API_KEY = "sk-test"
+        fake_client = MagicMock()
+        fake_client.messages.create.return_value = _make_tool_use_message(False, "")
+        with patch("anthropic.Anthropic", return_value=fake_client):
+            judge_with_claude("any text")
+
+        kwargs = fake_client.messages.create.call_args.kwargs
+        # max_tokens capped low to bound latency.
+        assert kwargs["max_tokens"] == 80
+        # System prompt is structured (list of blocks) with cache_control.
+        assert isinstance(kwargs["system"], list)
+        assert kwargs["system"][0]["cache_control"] == {"type": "ephemeral"}
+        # Tool-use is forced to our specific tool.
+        assert kwargs["tool_choice"]["type"] == "tool"
+        assert kwargs["tool_choice"]["name"] == "submit_moderation_decision"
+
+
+class TestJudgeTextFallback:
+    """Defensive fallback: if Claude returns a text block (shouldn't happen
+    with forced tool_choice, but we keep the parser in place), the lenient
+    JSON parser still handles it. These tests prevent regression if the
+    fallback ever has to run in production."""
+
+    def test_text_block_with_clean_json(self, settings):
+        settings.ANTHROPIC_API_KEY = "sk-test"
+        fake_client = MagicMock()
+        fake_client.messages.create.return_value = _make_message(
+            '{"block": true, "reason": "From the fallback path."}'
+        )
+        with patch("anthropic.Anthropic", return_value=fake_client):
+            block, reason = judge_with_claude("some content")
+        assert block is True
+        assert reason == "From the fallback path."
+
+    def test_text_block_with_markdown_fence(self, settings):
         settings.ANTHROPIC_API_KEY = "sk-test"
         fake_client = MagicMock()
         fake_client.messages.create.return_value = _make_message(
@@ -116,9 +181,7 @@ class TestJudgeParsing:
         assert block is True
         assert reason == "Spam detected."
 
-    def test_block_with_fence_and_trailing_commentary(self, settings):
-        """The 'Shivashish' regression: Claude appends an explanation
-        paragraph after the closing fence."""
+    def test_text_block_with_fence_and_trailing_commentary(self, settings):
         settings.ANTHROPIC_API_KEY = "sk-test"
         fake_client = MagicMock()
         fake_client.messages.create.return_value = _make_message(
@@ -130,17 +193,8 @@ class TestJudgeParsing:
         assert block is True
         assert reason == "Personal attack."
 
-    def test_block_false_clean(self, settings):
-        settings.ANTHROPIC_API_KEY = "sk-test"
-        fake_client = MagicMock()
-        fake_client.messages.create.return_value = _make_message('{"block": false, "reason": ""}')
-        with patch("anthropic.Anthropic", return_value=fake_client):
-            block, reason = judge_with_claude("clean content")
-        assert block is False
-        assert reason == ""
-
     def test_missing_keys_default_to_safe(self, settings):
-        """If Claude omits one or both keys, we default to allow (fail open)."""
+        """Text-block fallback: if Claude omits keys, we default to allow."""
         settings.ANTHROPIC_API_KEY = "sk-test"
         fake_client = MagicMock()
         fake_client.messages.create.return_value = _make_message("{}")
