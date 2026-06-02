@@ -55,8 +55,8 @@ def _video_provider() -> VideoProvider:
 
 
 @transaction.atomic
-def enqueue(*, user) -> tuple[PoolTicket, BodyDoubleSession | None]:  # type: ignore[no-untyped-def]
-    """Add `user` to the matchmaking pool.
+def enqueue(*, user, community=None) -> tuple[PoolTicket, BodyDoubleSession | None]:  # type: ignore[no-untyped-def]
+    """Add `user` to the matchmaking pool, optionally scoped to `community`.
 
     Returns `(ticket, session)` where `session` is non-None if a match
     happened immediately (i.e. another user was already waiting).
@@ -71,7 +71,11 @@ def enqueue(*, user) -> tuple[PoolTicket, BodyDoubleSession | None]:  # type: ig
       AlreadyInPoolError — user already has a waiting or matched ticket.
     """
     try:
-        ticket = PoolTicket.objects.create(user=user, status=PoolTicket.STATUS_WAITING)
+        ticket = PoolTicket.objects.create(
+            user=user,
+            community=community,
+            status=PoolTicket.STATUS_WAITING,
+        )
     except IntegrityError as exc:
         raise AlreadyInPoolError("You already have an active body-double request.") from exc
 

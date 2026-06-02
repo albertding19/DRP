@@ -58,6 +58,7 @@ INSTALLED_APPS = [
     "apps.search",
     "apps.realtime",
     "apps.moderation",
+    "apps.communities",
     "apps.body_double",
 ]
 
@@ -193,8 +194,12 @@ MODERATION_CLAUDE_TIMEOUT_S = env.float("MODERATION_CLAUDE_TIMEOUT_S", default=3
 # setting this env var to a different dotted path.
 BODY_DOUBLE_MATCHING_STRATEGY = env(
     "BODY_DOUBLE_MATCHING_STRATEGY",
-    default="apps.body_double.matching.fifo.FIFOStrategy",
+    default="apps.body_double.matching.community.CommunityFallbackStrategy",
 )
+
+# How long (seconds) a waiting community-scoped ticket must sit alone in
+# its community before the matching strategy will pair it with anyone.
+BODY_DOUBLE_FALLBACK_S = env.int("BODY_DOUBLE_FALLBACK_S", default=60)
 
 # Pluggable video provider. Same shape as the matching strategy.
 BODY_DOUBLE_VIDEO_PROVIDER = env(
