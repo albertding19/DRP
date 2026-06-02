@@ -1,0 +1,28 @@
+{% comment %}One task in the backlog (no scheduled_start).{% endcomment %}
+<div class="backlog-row" id="backlog-{{ task.id }}">
+  <span class="name">
+    {{ task.name }}
+    <span class="duration">{{ task.remaining_minutes }} min</span>
+    {% if task.priority == "high" %}<span class="badge badge-high">Important</span>{% endif %}
+    {% if task.body_double_preferred %}<span class="badge badge-bd">🤝 with someone</span>{% endif %}
+    {% if task.deadline %}
+      <span class="duration">· due {{ task.deadline|date:"D H:i" }}</span>
+    {% endif %}
+  </span>
+  <span class="actions">
+    <form
+      method="post"
+      action="{% url 'tasks:start' task.id %}"
+      hx-post="{% url 'tasks:start' task.id %}"
+      hx-target="#full-region"
+      hx-swap="innerHTML"
+    >{% csrf_token %}<button type="submit" class="btn btn-success">▶ Start</button></form>
+    <form
+      method="post"
+      action="{% url 'tasks:delete' task.id %}"
+      hx-post="{% url 'tasks:delete' task.id %}"
+      hx-target="#backlog-{{ task.id }}"
+      hx-swap="delete"
+    >{% csrf_token %}<button type="submit" class="btn btn-danger">×</button></form>
+  </span>
+</div>

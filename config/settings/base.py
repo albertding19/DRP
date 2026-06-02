@@ -60,6 +60,7 @@ INSTALLED_APPS = [
     "apps.moderation",
     "apps.communities",
     "apps.body_double",
+    "apps.tasks",
 ]
 
 # ---------------------------------------------------------------------------
@@ -219,3 +220,17 @@ BODY_DOUBLE_WAIT_TIMEOUT_S = env.int("BODY_DOUBLE_WAIT_TIMEOUT_S", default=300)
 LIVEKIT_API_KEY = env("LIVEKIT_API_KEY", default="")
 LIVEKIT_API_SECRET = env("LIVEKIT_API_SECRET", default="")
 LIVEKIT_URL = env("LIVEKIT_URL", default="")
+
+# ---------------------------------------------------------------------------
+# Tasks → auto-generated daily timetable
+# ---------------------------------------------------------------------------
+# Working window in local hours. Tasks are only scheduled inside it.
+TASKS_WORK_START_HOUR = env.int("TASKS_WORK_START_HOUR", default=9)
+TASKS_WORK_END_HOUR = env.int("TASKS_WORK_END_HOUR", default=21)
+# Default break length when the user clicks "I need a break".
+TASKS_BREAK_MINUTES = env.int("TASKS_BREAK_MINUTES", default=15)
+# Gap to insert between back-to-back tasks in the same slot.
+TASKS_TRANSITION_MINUTES = env.int("TASKS_TRANSITION_MINUTES", default=5)
+# Minimum seconds between two consecutive "I need a break" presses, to
+# prevent the user spamming and stacking breaks.
+TASKS_BREAK_COOLDOWN_S = env.int("TASKS_BREAK_COOLDOWN_S", default=60)

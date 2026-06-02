@@ -1,0 +1,83 @@
+{% comment %}
+Add-task form. Self-replacing on validation error via HX-Retarget +
+HX-Reswap headers from the view. On success the view returns the full
+region instead.
+{% endcomment %}
+<form
+  id="add-task-form"
+  class="section-card"
+  method="post"
+  action="{% url 'tasks:add' %}"
+  hx-post="{% url 'tasks:add' %}"
+  hx-target="#full-region"
+  hx-swap="innerHTML"
+  x-on:htmx:after-request="
+    if (event.detail.successful && !event.detail.xhr.getResponseHeader('HX-Retarget')) {
+      $el.reset();
+    }
+  "
+>
+  {% csrf_token %}
+  <div class="section-card-header">
+    <h2>➕ Add something to do</h2>
+  </div>
+  <div class="section-card-body">
+    {% if add_task_errors.form %}
+      <div class="form-error">{{ add_task_errors.form }}</div>
+    {% endif %}
+    <div class="form-row">
+      <label for="task-name">What's the thing?</label>
+      <input
+        type="text" id="task-name" name="name"
+        value="{{ add_task_initial.name|default:'' }}"
+        placeholder="Read chapter 3, email tutor, tidy desk…" required maxlength="200"
+      >
+    </div>
+    <div class="form-grid">
+      <div class="form-row">
+        <label for="task-duration">How long? (in minutes)</label>
+        <input
+          type="number" id="task-duration" name="duration_minutes"
+          value="{{ add_task_initial.duration_minutes|default:'30' }}"
+          min="5" max="600" step="5" required
+        >
+        {% if add_task_errors.duration_minutes %}
+          <div class="form-error">{{ add_task_errors.duration_minutes }}</div>
+        {% endif %}
+      </div>
+      <div class="form-row">
+        <label for="task-priority">How important?</label>
+        <select id="task-priority" name="priority">
+          {% for value, label in priority_choices %}
+            <option value="{{ value }}" {% if add_task_initial.priority == value %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-row">
+        <label for="task-energy">How much focus?</label>
+        <select id="task-energy" name="energy">
+          {% for value, label in energy_choices %}
+            <option value="{{ value }}" {% if add_task_initial.energy == value %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-row">
+        <label for="task-deadline">Due by (optional)</label>
+        <input
+          type="datetime-local" id="task-deadline" name="deadline"
+          value="{{ add_task_initial.deadline|default:'' }}"
+        >
+      </div>
+    </div>
+    <div class="form-row form-row-inline">
+      <input
+        type="checkbox" id="task-bd" name="body_double_preferred"
+        {% if add_task_initial.body_double_preferred %}checked{% endif %}
+      >
+      <label for="task-bd">🤝 I'd like to do this with someone</label>
+    </div>
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary">Save it</button>
+    </div>
+  </div>
+</form>

@@ -1,0 +1,90 @@
+{% comment %}
+The "live" region of the tasks page. Re-rendered in full by most POST
+endpoints (add, plan, break, busy/add, busy/<id>/delete, lifecycle
+changes). Always wraps the same four sub-sections so HTMX targets are
+stable.
+{% endcomment %}
+
+{% if break_error %}
+  <div class="break-error">{{ break_error }}</div>
+{% endif %}
+
+{% if in_progress_task %}
+  <div class="in-progress-banner">
+    ▶ Right now: <strong>{{ in_progress_task.name }}</strong>
+    <small>({{ in_progress_task.remaining_minutes }} min to go)</small>
+  </div>
+{% endif %}
+
+<div class="section-card">
+  <div class="section-card-header">
+    <h2>📅 Today, {{ today|date:"D j M" }}</h2>
+    <form
+      method="post"
+      action="{% url 'tasks:plan' %}"
+      hx-post="{% url 'tasks:plan' %}"
+      hx-target="#full-region"
+      hx-swap="innerHTML"
+    >
+      {% csrf_token %}
+      <button type="submit" class="btn btn-primary">✨ Plan my day</button>
+    </form>
+  </div>
+  <div class="section-card-body">
+    {% if scheduled %}
+      {% for task in scheduled %}
+        {% include "tasks/_task_row.html" with task=task %}
+      {% endfor %}
+    {% else %}
+      <p class="empty-line">Nothing here yet. Add something above, then tap Plan my day.</p>
+    {% endif %}
+  </div>
+</div>
+
+<div class="section-card">
+  <div class="section-card-header">
+    <h2>📋 To do later ({{ backlog|length }})</h2>
+  </div>
+  <div class="section-card-body">
+    {% if backlog %}
+      {% for task in backlog %}
+        {% include "tasks/_backlog_row.html" with task=task %}
+      {% endfor %}
+    {% else %}
+      <p class="empty-line">Nothing on your list.</p>
+    {% endif %}
+  </div>
+</div>
+
+<div class="section-card">
+  <div class="section-card-header">
+    <h2>🔒 Already booked ({{ busy_blocks|length }})</h2>
+  </div>
+  <div class="section-card-body">
+    {% if busy_blocks %}
+      {% for block in busy_blocks %}
+        {% include "tasks/_busy_block.html" with block=block %}
+      {% endfor %}
+    {% else %}
+      <p class="empty-line">Nothing booked yet.</p>
+    {% endif %}
+  </div>
+</div>
+
+{% if completed %}
+  <div class="section-card">
+    <div class="section-card-header">
+      <h2>✅ Wrapped up today ({{ completed|length }})</h2>
+    </div>
+    <div class="section-card-body">
+      {% for task in completed %}
+        <div class="task-row">
+          <span class="name" style="color: var(--fg-muted); text-decoration: line-through;">
+            {{ task.name }}
+          </span>
+          <span class="badge badge-{{ task.status|cut:"_" }}">{{ task.get_status_display }}</span>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+{% endif %}

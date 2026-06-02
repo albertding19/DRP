@@ -1,0 +1,22 @@
+{% comment %}One busy block (manual or break).{% endcomment %}
+<div class="busy-row" id="busy-{{ block.id }}">
+  <span class="time">
+    {{ block.start_at|date:"H:i" }}–{{ block.end_at|date:"H:i" }}
+  </span>
+  <span class="name">
+    {% if block.kind == "break" %}
+      <span class="badge badge-break">☕ Breather</span>
+    {% else %}
+      {{ block.name }}
+    {% endif %}
+  </span>
+  <span class="actions">
+    <form
+      method="post"
+      action="{% url 'tasks:busy_delete' block.id %}"
+      hx-post="{% url 'tasks:busy_delete' block.id %}"
+      hx-target="#full-region"
+      hx-swap="innerHTML"
+    >{% csrf_token %}<button type="submit" class="btn btn-danger">×</button></form>
+  </span>
+</div>

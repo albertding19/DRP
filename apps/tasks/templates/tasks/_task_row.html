@@ -1,0 +1,39 @@
+{% comment %}One scheduled task on the timetable.{% endcomment %}
+<div class="task-row" id="task-{{ task.id }}">
+  <span class="time">
+    {% if task.scheduled_start %}{{ task.scheduled_start|date:"H:i" }}{% else %}—{% endif %}
+  </span>
+  <span class="name">
+    {{ task.name }}
+    <span class="duration">{{ task.remaining_minutes }} min</span>
+    {% if task.priority == "high" %}<span class="badge badge-high">Important</span>{% endif %}
+    {% if task.body_double_preferred %}<span class="badge badge-bd">🤝 with someone</span>{% endif %}
+    {% if task.time_spent_minutes %}<span class="badge badge-paused">{{ task.time_spent_minutes }} min done</span>{% endif %}
+    {% if task.status == "in_progress" %}<span class="badge badge-in-progress">doing now</span>{% endif %}
+  </span>
+  <span class="actions">
+    {% if task.status == "pending" %}
+      <form
+        method="post"
+        action="{% url 'tasks:start' task.id %}"
+        hx-post="{% url 'tasks:start' task.id %}"
+        hx-target="#full-region"
+        hx-swap="innerHTML"
+      >{% csrf_token %}<button type="submit" class="btn btn-success">▶ Start</button></form>
+    {% endif %}
+    <form
+      method="post"
+      action="{% url 'tasks:done' task.id %}"
+      hx-post="{% url 'tasks:done' task.id %}"
+      hx-target="#full-region"
+      hx-swap="innerHTML"
+    >{% csrf_token %}<button type="submit" class="btn btn-secondary">Done</button></form>
+    <form
+      method="post"
+      action="{% url 'tasks:skip' task.id %}"
+      hx-post="{% url 'tasks:skip' task.id %}"
+      hx-target="#full-region"
+      hx-swap="innerHTML"
+    >{% csrf_token %}<button type="submit" class="btn btn-secondary">Skip</button></form>
+  </span>
+</div>

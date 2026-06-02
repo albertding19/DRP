@@ -1,0 +1,183 @@
+"""Smoke tests for tasks views — HTTP layer."""
+
+from __future__ import annotations
+
+from datetime import timedelta
+
+import pytest
+from django.test import Client
+from django.utils import timezone
+
+from apps.accounts.models import User
+from apps.tasks.models import BusyBlock, Task
+from apps.tasks.services import create_task
+
+
+def _authed(nick: str) -> tuple[Client, User]:
+    user = User.objects.create_anonymous(nickname=f"vw_{nick}")
+    client = Client()
+    s = client.session
+    s["user_id"] = user.id
+    s.save()
+    return client, user
+
+
+@pytest.mark.django_db
+class TestIndex:
+    def test_unauthed_redirected(self) -> None:
+        r = Client().get("/tasks/")
+        assert r.status_code == 302
+
+    def test_renders_empty_state(self) -> None:
+        client, _ = _authed("empty")
+        r = client.get("/tasks/")
+        assert r.status_code == 200
+        # Empty state copy varies; just confirm the page rendered.
+        assert b"task" in r.content.lower()
+
+
+@pytest.mark.django_db
+class TestAddTask:
+    def test_add_succeeds(self) -> None:
+        client, user = _authed("add1")
+        r = client.post("/tasks/add/", {"name": "Read paper", "duration_minutes": "30"})
+        # Non-HTMX redirects to index.
+        assert r.status_code == 302
+        assert Task.objects.filter(user=user, name="Read paper").exists()
+
+    def test_add_with_htmx_returns_partial(self) -> None:
+        client, user = _authed("add2")
+        r = client.post(
+            "/tasks/add/",
+            {"name": "Essay", "duration_minutes": "45", "priority": "high"},
+            HTTP_HX_REQUEST="true",
+        )
+        assert r.status_code == 200
+        assert Task.objects.filter(user=user, name="Essay", priority=Task.PRIORITY_HIGH).exists()
+
+    def test_validation_error_htmx_returns_form_with_retarget(self) -> None:
+        client, _ = _authed("add3")
+        r = client.post(
+            "/tasks/add/",
+            {"name": "", "duration_minutes": "abc"},
+            HTTP_HX_REQUEST="true",
+        )
+        assert r.status_code == 422
+        assert r.headers.get("HX-Retarget") == "#add-task-form"
+        assert r.headers.get("HX-Reswap") == "outerHTML"
+
+
+@pytest.mark.django_db
+class TestPlanEndpoint:
+    def test_plan_returns_timetable(self) -> None:
+        client, user = _authed("pl1")
+        create_task(user=user, name="A", duration_minutes=30)
+        r = client.post("/tasks/plan/", HTTP_HX_REQUEST="true")
+        assert r.status_code == 200
+
+
+@pytest.mark.django_db
+class TestBreakEndpoint:
+    def test_break_creates_block(self) -> None:
+        client, user = _authed("br1")
+        r = client.post("/tasks/break/", HTTP_HX_REQUEST="true")
+        assert r.status_code == 200
+        assert BusyBlock.objects.filter(user=user, kind=BusyBlock.KIND_BREAK).exists()
+
+
+@pytest.mark.django_db
+class TestStartTask:
+    def test_start_without_body_double(self) -> None:
+        client, user = _authed("st1")
+        t = create_task(user=user, name="A", duration_minutes=30)
+        r = client.post(f"/tasks/{t.id}/start/", HTTP_HX_REQUEST="true")
+        assert r.status_code == 200
+        t.refresh_from_db()
+        assert t.status == Task.STATUS_IN_PROGRESS
+
+    def test_start_with_match_returns_hx_redirect(self, monkeypatch) -> None:
+        client, user = _authed("st2")
+        t = create_task(
+            user=user,
+            name="A",
+            duration_minutes=30,
+            body_double_preferred=True,
+        )
+
+        class _Sess:
+            id = 99
+            room_id = "abc123"
+
+        def _matched(**kwargs):
+            return None, _Sess()
+
+        monkeypatch.setattr("apps.body_double.services.enqueue", _matched)
+        r = client.post(f"/tasks/{t.id}/start/", HTTP_HX_REQUEST="true")
+        assert r.status_code == 204
+        assert "/body-double/room/99/" in r.headers.get("HX-Redirect", "")
+
+
+@pytest.mark.django_db
+class TestLifecycle:
+    def test_done(self) -> None:
+        client, user = _authed("li1")
+        t = create_task(user=user, name="A", duration_minutes=30)
+        r = client.post(f"/tasks/{t.id}/done/", HTTP_HX_REQUEST="true")
+        assert r.status_code == 200
+        t.refresh_from_db()
+        assert t.status == Task.STATUS_DONE
+
+    def test_skip(self) -> None:
+        client, user = _authed("li2")
+        t = create_task(user=user, name="A", duration_minutes=30)
+        r = client.post(f"/tasks/{t.id}/skip/", HTTP_HX_REQUEST="true")
+        assert r.status_code == 200
+        t.refresh_from_db()
+        assert t.status == Task.STATUS_SKIPPED
+
+    def test_delete_returns_204(self) -> None:
+        client, user = _authed("li3")
+        t = create_task(user=user, name="A", duration_minutes=30)
+        r = client.post(f"/tasks/{t.id}/delete/", HTTP_HX_REQUEST="true")
+        assert r.status_code == 204
+        assert not Task.objects.filter(pk=t.id).exists()
+
+
+@pytest.mark.django_db
+class TestBusyEndpoint:
+    def test_add_busy(self) -> None:
+        client, user = _authed("bu1")
+        now = timezone.localtime()
+        start = now.replace(hour=14, minute=0, second=0, microsecond=0)
+        end = start + timedelta(hours=1)
+        r = client.post(
+            "/tasks/busy/add/",
+            {"name": "Lecture", "start_at": start.isoformat(), "end_at": end.isoformat()},
+            HTTP_HX_REQUEST="true",
+        )
+        assert r.status_code == 200
+        assert BusyBlock.objects.filter(user=user, name="Lecture").exists()
+
+    def test_delete_busy(self) -> None:
+        client, user = _authed("bu2")
+        now = timezone.localtime()
+        start = now.replace(hour=14, minute=0, second=0, microsecond=0)
+        b = BusyBlock.objects.create(
+            user=user,
+            name="X",
+            start_at=start,
+            end_at=start + timedelta(hours=1),
+            kind=BusyBlock.KIND_MANUAL,
+        )
+        r = client.post(f"/tasks/busy/{b.id}/delete/", HTTP_HX_REQUEST="true")
+        assert r.status_code == 200
+        assert not BusyBlock.objects.filter(pk=b.id).exists()
+
+
+@pytest.mark.django_db
+class TestNonHtmxFallback:
+    def test_add_redirects_to_index(self) -> None:
+        client, _ = _authed("nh1")
+        r = client.post("/tasks/add/", {"name": "A", "duration_minutes": "30"})
+        assert r.status_code == 302
+        assert r.url == "/tasks/"
