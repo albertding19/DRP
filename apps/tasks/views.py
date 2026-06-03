@@ -174,6 +174,9 @@ def add_task(request: HttpRequest) -> HttpResponse:
                 deadline=deadline,
                 body_double_preferred=body_double_preferred,
             )
+            # Auto-fold the new task into today's schedule. No "Plan my day"
+            # button — every list change re-flows the day implicitly.
+            auto_plan(user=request.user)
         except InvalidTaskFieldsError as exc:
             errors["form"] = str(exc)
 
@@ -231,6 +234,7 @@ def edit_task(request: HttpRequest, task_id: int) -> HttpResponse:
         update_task(task=task, **fields)
     except InvalidTaskFieldsError as exc:
         return HttpResponseBadRequest(str(exc))
+    auto_plan(user=request.user)
     if request.htmx:
         return _render_full_region(request)
     return redirect("tasks:index")
@@ -241,6 +245,7 @@ def edit_task(request: HttpRequest, task_id: int) -> HttpResponse:
 def delete(request: HttpRequest, task_id: int) -> HttpResponse:
     task = get_object_or_404(Task, pk=task_id, user=request.user)
     delete_task(task=task)
+    auto_plan(user=request.user)
     if request.htmx:
         return HttpResponse(status=204)
     return redirect("tasks:index")
@@ -275,6 +280,8 @@ def start(request: HttpRequest, task_id: int) -> HttpResponse:
 def done(request: HttpRequest, task_id: int) -> HttpResponse:
     task = get_object_or_404(Task, pk=task_id, user=request.user)
     complete_task(task=task)
+    # Finishing early frees up time — re-flow the rest of the day.
+    auto_plan(user=request.user)
     if request.htmx:
         return _render_full_region(request)
     return redirect("tasks:index")
@@ -285,6 +292,7 @@ def done(request: HttpRequest, task_id: int) -> HttpResponse:
 def skip(request: HttpRequest, task_id: int) -> HttpResponse:
     task = get_object_or_404(Task, pk=task_id, user=request.user)
     skip_task(task=task)
+    auto_plan(user=request.user)
     if request.htmx:
         return _render_full_region(request)
     return redirect("tasks:index")
@@ -342,6 +350,8 @@ def add_busy(request: HttpRequest) -> HttpResponse:
     if not errors:
         try:
             add_busy_block(user=request.user, name=name, start_at=start_at, end_at=end_at)
+            # New busy block can collide with planned tasks — re-flow now.
+            auto_plan(user=request.user)
         except InvalidTaskFieldsError as exc:
             errors["form"] = str(exc)
     if errors:
@@ -368,6 +378,8 @@ def add_busy(request: HttpRequest) -> HttpResponse:
 def delete_busy(request: HttpRequest, block_id: int) -> HttpResponse:
     block = get_object_or_404(BusyBlock, pk=block_id, user=request.user)
     delete_busy_block(block=block)
+    # Removing a booked slot opens up time — re-flow into the gap.
+    auto_plan(user=request.user)
     if request.htmx:
         return _render_full_region(request)
     return redirect("tasks:index")
