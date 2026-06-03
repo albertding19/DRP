@@ -245,9 +245,11 @@ def edit_task(request: HttpRequest, task_id: int) -> HttpResponse:
 def delete(request: HttpRequest, task_id: int) -> HttpResponse:
     task = get_object_or_404(Task, pk=task_id, user=request.user)
     delete_task(task=task)
+    # Auto-plan after delete so any leftover tasks can slide forward into
+    # the freed slot; the response carries the freshly re-flowed schedule.
     auto_plan(user=request.user)
     if request.htmx:
-        return HttpResponse(status=204)
+        return _render_full_region(request)
     return redirect("tasks:index")
 
 
