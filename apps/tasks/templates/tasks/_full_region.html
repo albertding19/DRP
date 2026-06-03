@@ -69,10 +69,20 @@ stable.
     <div class="section-card-body">
       {% for task in completed %}
         <div class="task-row">
-          <span class="name" style="color: var(--fg-muted); text-decoration: line-through;">
+          <span class="name" style="color: var(--fg-muted); text-decoration: line-through; flex: 1;">
             {{ task.name }}
           </span>
           <span class="badge badge-{{ task.status|cut:"_" }}">{{ task.get_status_display }}</span>
+          <span class="actions">
+            <form
+              method="post"
+              action="{% url 'tasks:delete' task.id %}"
+              hx-post="{% url 'tasks:delete' task.id %}"
+              hx-target="#full-region"
+              hx-swap="innerHTML"
+              hx-confirm="Remove this from the history?"
+            >{% csrf_token %}<button type="submit" class="btn btn-danger" title="Remove">×</button></form>
+          </span>
         </div>
       {% endfor %}
     </div>

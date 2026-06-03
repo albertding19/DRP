@@ -135,11 +135,23 @@ class TestLifecycle:
         t.refresh_from_db()
         assert t.status == Task.STATUS_SKIPPED
 
-    def test_delete_returns_204(self) -> None:
+    def test_delete_removes_and_returns_full_region(self) -> None:
         client, user = _authed("li3")
         t = create_task(user=user, name="A", duration_minutes=30)
         r = client.post(f"/tasks/{t.id}/delete/", HTTP_HX_REQUEST="true")
-        assert r.status_code == 204
+        # Now returns the re-flowed schedule (200) instead of a bare 204,
+        # because auto-plan runs after delete and the remaining tasks may
+        # have shifted into the freed slot.
+        assert r.status_code == 200
+        assert not Task.objects.filter(pk=t.id).exists()
+
+    def test_delete_from_timetable_works(self) -> None:
+        # Scheduled tasks now expose a delete button too, not just backlog.
+        client, user = _authed("li4")
+        t = create_task(user=user, name="A", duration_minutes=30)
+        # auto_plan would normally place it, but we don't need that to test delete.
+        r = client.post(f"/tasks/{t.id}/delete/", HTTP_HX_REQUEST="true")
+        assert r.status_code == 200
         assert not Task.objects.filter(pk=t.id).exists()
 
 

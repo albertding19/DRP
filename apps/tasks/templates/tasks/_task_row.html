@@ -35,5 +35,13 @@
       hx-target="#full-region"
       hx-swap="innerHTML"
     >{% csrf_token %}<button type="submit" class="btn btn-secondary">Skip</button></form>
+    <form
+      method="post"
+      action="{% url 'tasks:delete' task.id %}"
+      hx-post="{% url 'tasks:delete' task.id %}"
+      hx-target="#full-region"
+      hx-swap="innerHTML"
+      hx-confirm="Remove this task for good?"
+    >{% csrf_token %}<button type="submit" class="btn btn-danger" title="Remove">×</button></form>
   </span>
 </div>
