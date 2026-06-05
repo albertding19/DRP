@@ -1,50 +1,67 @@
 /**
  * Shared WebSocket client.
  *
- * On any page that wants real-time updates, do:
+ * Pages can open multiple concurrent sockets — the store keeps an entry
+ * per path, with its own backoff/reconnect state. Most pages still open
+ * one; the dashboard opens two (`/ws/feed/` + `/ws/matchmaking/<uid>/`).
  *
- *   <div x-data x-init="$store.ws.connect('/ws/feed/')"
+ * Usage:
+ *
+ *   <div x-data
+ *        x-init="$store.ws.connect('/ws/feed/')"
  *        x-on:ws:score_changed.window="updateScore($event.detail)">
  *
- * The store exposes a single open WebSocket per path, auto-reconnects with
- * exponential backoff, and dispatches a `CustomEvent` per server message
- * (`ws:<type>` on `window`, with the `payload` in `detail`).
+ *   <!-- multiple sockets on one page -->
+ *   <div x-init="$store.ws.connect('/ws/feed/');
+ *                $store.ws.connect('/ws/matchmaking/{{ user.id }}/')">
  *
- * Server messages MUST be JSON of shape: { "type": "...", "payload": {...} }
+ *   <!-- targeted disconnect -->
+ *   $store.ws.disconnect('/ws/feed/');
+ *   <!-- back-compat: no-arg disconnects all -->
+ *   $store.ws.disconnect();
  *
- * Consumers come Thu 28 May; this client is ready for them.
+ * Server messages MUST be JSON of shape: { "type": "...", "payload": {...} }.
+ * Each message is fan-out to `window` as a `CustomEvent` named `ws:<type>`
+ * with the payload in `detail`. Listeners do NOT need to know which socket
+ * delivered the event — message types are globally unique.
  */
 
 document.addEventListener("alpine:init", () => {
   Alpine.store("ws", {
-    socket: null,
-    path: null,
-    backoff: 500,
-    closedByUser: false,
+    /** path → { socket, backoff, closedByUser } */
+    sockets: {},
 
     connect(path) {
-      if (this.socket && this.path === path) return;
-      this.path = path;
-      this.closedByUser = false;
-      this._open();
+      if (this.sockets[path]) return;
+      this.sockets[path] = { socket: null, backoff: 500, closedByUser: false };
+      this._open(path);
     },
 
-    disconnect() {
-      this.closedByUser = true;
-      if (this.socket) this.socket.close();
-      this.socket = null;
+    disconnect(path) {
+      if (path) {
+        const entry = this.sockets[path];
+        if (!entry) return;
+        entry.closedByUser = true;
+        if (entry.socket) entry.socket.close();
+        delete this.sockets[path];
+      } else {
+        // Back-compat: no-arg disconnects every socket. Old callers
+        // (single-socket pages) still work without changes.
+        for (const p of Object.keys(this.sockets)) this.disconnect(p);
+      }
     },
 
-    _open() {
+    _open(path) {
+      const entry = this.sockets[path];
+      if (!entry) return;
       const proto = location.protocol === "https:" ? "wss:" : "ws:";
-      const url = `${proto}//${location.host}${this.path}`;
-      this.socket = new WebSocket(url);
+      entry.socket = new WebSocket(`${proto}//${location.host}${path}`);
 
-      this.socket.onopen = () => {
-        this.backoff = 500;
+      entry.socket.onopen = () => {
+        entry.backoff = 500;
       };
 
-      this.socket.onmessage = (e) => {
+      entry.socket.onmessage = (e) => {
         let msg;
         try {
           msg = JSON.parse(e.data);
@@ -57,16 +74,16 @@ document.addEventListener("alpine:init", () => {
         );
       };
 
-      this.socket.onclose = () => {
-        if (this.closedByUser) return;
-        // Exponential backoff capped at ~10s
-        const wait = Math.min(this.backoff, 10000);
-        this.backoff = Math.min(this.backoff * 2, 10000);
-        setTimeout(() => this._open(), wait);
+      entry.socket.onclose = () => {
+        if (entry.closedByUser) return;
+        // Exponential backoff capped at ~10s, per-socket.
+        const wait = Math.min(entry.backoff, 10000);
+        entry.backoff = Math.min(entry.backoff * 2, 10000);
+        setTimeout(() => this._open(path), wait);
       };
 
-      this.socket.onerror = () => {
-        if (this.socket) this.socket.close();
+      entry.socket.onerror = () => {
+        if (entry.socket) entry.socket.close();
       };
     },
   });

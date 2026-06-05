@@ -30,8 +30,10 @@ class TestFeed:
         assert response.url.startswith("/accounts/start/")
 
     def test_authed_user_sees_feed(self, authed_client) -> None:
+        # Feed moved from `/` to `/feed/` when the dashboard homepage shipped;
+        # `/` now serves the dashboard. Anon redirect logic (above) is unchanged.
         client, _ = authed_client
-        response = client.get("/")
+        response = client.get("/feed/")
         assert response.status_code == 200
         assert b"Strategies" in response.content
         assert b"No posts yet" in response.content
@@ -39,14 +41,21 @@ class TestFeed:
     def test_feed_lists_existing_posts(self, authed_client) -> None:
         client, user = authed_client
         Post.objects.create(author=user, title="My first post", body="body")
-        response = client.get("/")
+        response = client.get("/feed/")
         assert response.status_code == 200
         assert b"My first post" in response.content
 
     def test_sort_top(self, authed_client) -> None:
         client, _ = authed_client
-        response = client.get("/?sort=top")
+        response = client.get("/feed/?sort=top")
         assert response.status_code == 200
+
+    def test_feed_url_is_at_feed(self) -> None:
+        # Regression: keep the URL name 'posts:feed' resolving to /feed/ so
+        # the seven existing {% url 'posts:feed' %} callers keep working.
+        from django.urls import reverse
+
+        assert reverse("posts:feed") == "/feed/"
 
 
 @pytest.mark.django_db
@@ -225,6 +234,6 @@ class TestReportPostView:
         p.title = "Should not show on the feed"
         p.is_hidden = True
         p.save(update_fields=["is_hidden", "title"])
-        response = client.get("/")
+        response = client.get("/feed/")
         assert response.status_code == 200
         assert b"Should not show on the feed" not in response.content

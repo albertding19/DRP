@@ -2,7 +2,8 @@
 
 Each app owns its own `urls.py` which is included here. App URL prefixes:
 
-- `/` and `/feed/`          → posts feed (default landing)
+- `/`                       → personal dashboard (apps.core.views.home)
+- `/feed/`                  → posts feed
 - `/posts/...`              → post create/detail/edit
 - `/comments/...`           → comment create/delete
 - `/vote/...`               → voting endpoints
@@ -19,7 +20,7 @@ url modules so the import graph is stable from day one.
 from django.contrib import admin
 from django.urls import include, path
 
-from apps.core.views import healthz, version
+from apps.core.views import healthz, home, version
 
 urlpatterns = [
     # ---- ops ----
@@ -27,6 +28,8 @@ urlpatterns = [
     path("version", version, name="version"),
     # ---- auth ----
     path("accounts/", include("apps.accounts.urls")),
+    # ---- homepage (must come BEFORE the empty-prefix includes below) ----
+    path("", home, name="home"),
     # ---- features ----
     path("", include("apps.posts.urls")),
     path("", include("apps.comments.urls")),
