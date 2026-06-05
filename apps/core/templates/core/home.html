@@ -136,8 +136,10 @@
       {% else %}
         <p class="empty-line">No posts yet.</p>
       {% endif %}
-      {# Tag pills render regardless of whether there are posts — popular tags
-         are still useful navigation even on a quiet day. #}
+      {% comment %}
+        Tag pills render regardless of whether there are posts — popular tags
+        are still useful navigation even on a quiet day.
+      {% endcomment %}
       {% if feed_panel and feed_panel.tags %}
         <div class="tag-pills">
           {% for tag in feed_panel.tags %}
