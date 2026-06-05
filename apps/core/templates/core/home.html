@@ -1,0 +1,280 @@
+{% extends "base.html" %}
+
+{% block title %}Your day — {{ PROJECT_NAME }}{% endblock %}
+
+{% block content %}
+<section
+  class="dashboard"
+  x-data="dashboard()"
+  x-init="
+    $store.ws.connect('/ws/feed/');
+    $store.ws.connect('/ws/matchmaking/{{ request.user.id }}/');
+  "
+  x-on:ws:post_created.window="newPosts += 1"
+  x-on:ws:match_found.window="onMatchFound($event.detail)"
+>
+  <header class="dashboard-header">
+    <h1>Hi, {{ request.user.nickname }} 👋</h1>
+    <p class="muted">Here's what's going on right now.</p>
+  </header>
+
+  {# ---- Panel 1: Today's tasks ---- #}
+  <div id="panel-tasks" class="section-card">
+    <div class="section-card-header">
+      <h2>📅 Today</h2>
+      <a href="{% url 'tasks:index' %}" class="btn btn-secondary">Open full plan →</a>
+    </div>
+    <div class="section-card-body">
+      {% if tasks_panel %}
+        {% if tasks_panel.in_progress_task %}
+          <div class="in-progress-banner">
+            ▶ Right now: <strong>{{ tasks_panel.in_progress_task.name }}</strong>
+            <small>({{ tasks_panel.in_progress_task.remaining_minutes }} min to go)</small>
+          </div>
+        {% endif %}
+        {% for task in tasks_panel.next_tasks %}
+          <div class="task-row-slim">
+            <span class="time">{{ task.scheduled_start|date:"H:i" }}</span>
+            <span class="name">{{ task.name }}</span>
+            <span class="duration">{{ task.remaining_minutes }} min</span>
+          </div>
+        {% empty %}
+          {% if not tasks_panel.in_progress_task %}
+            <p class="empty-line">Nothing on today yet. <a href="{% url 'tasks:index' %}">Add something.</a></p>
+          {% endif %}
+        {% endfor %}
+        {% if tasks_panel.backlog_count %}
+          <p class="muted small">{{ tasks_panel.backlog_count }} on your list waiting for a slot.</p>
+        {% endif %}
+        <form method="post" action="{% url 'tasks:break' %}" class="break-button-row">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-break">
+            ☕ I need a break <small>(takes {{ tasks_panel.default_break_minutes }} min)</small>
+          </button>
+        </form>
+      {% else %}
+        <p class="empty-line">Couldn't load tasks right now. <a href="{% url 'tasks:index' %}">Go to Tasks</a>.</p>
+      {% endif %}
+    </div>
+  </div>
+
+  {# ---- Panel 2: Body-double ---- #}
+  <div id="panel-body-double" class="section-card">
+    <div class="section-card-header">
+      <h2>🤝 Body double</h2>
+      <a href="{% url 'body_double:index' %}" class="btn btn-secondary">More →</a>
+    </div>
+    <div class="section-card-body">
+      {% if body_double_panel %}
+        {% if body_double_panel.state == "matched" %}
+          <a class="btn btn-success" href="{% url 'body_double:room' session_id=body_double_panel.session_id %}">
+            ▶ Rejoin your room
+          </a>
+        {% elif body_double_panel.state == "waiting" %}
+          <a class="btn btn-secondary" href="{% url 'body_double:waiting' %}">Resume waiting</a>
+          <form method="post" action="{% url 'body_double:leave' %}" style="display:inline; margin-left:0.5rem;">
+            {% csrf_token %}<button class="btn btn-danger">Cancel</button>
+          </form>
+        {% else %}
+          <form method="post" action="{% url 'body_double:find' %}">
+            {% csrf_token %}<button class="btn btn-primary">Find me someone</button>
+          </form>
+          <p class="muted small panel-footer">Work alongside a stranger for a quick focus session.</p>
+        {% endif %}
+      {% else %}
+        <a class="btn btn-secondary" href="{% url 'body_double:index' %}">Go to body double →</a>
+      {% endif %}
+    </div>
+  </div>
+
+  {# ---- Panel 3: Your communities ---- #}
+  <div id="panel-communities" class="section-card">
+    <div class="section-card-header">
+      <h2>💬 Your communities</h2>
+    </div>
+    <div class="section-card-body">
+      {% if communities_panel and communities_panel.communities %}
+        <ul class="slim-list">
+          {% for c in communities_panel.communities %}
+            <li>
+              <a href="{% url 'communities:detail' slug=c.slug %}">{{ c.name }}</a>
+              <small class="muted">· {{ c.member_count }}</small>
+            </li>
+          {% endfor %}
+        </ul>
+        <div class="panel-footer">
+          <a href="{% url 'communities:list' %}">Browse all</a> ·
+          <a href="{% url 'communities:create' %}">Create one</a>
+        </div>
+      {% else %}
+        <p class="empty-line">You haven't joined any yet. <a href="{% url 'communities:list' %}">Browse them</a>.</p>
+      {% endif %}
+    </div>
+  </div>
+
+  {# ---- Panel 4: Feed pulse ---- #}
+  <div id="panel-feed" class="section-card">
+    <div class="section-card-header">
+      <h2>📰 From the feed</h2>
+      <a href="{% url 'posts:feed' %}" class="btn btn-secondary">Open feed →</a>
+    </div>
+    <div class="section-card-body">
+      <div x-show="newPosts > 0" x-cloak>
+        <a href="{% url 'posts:feed' %}" class="new-posts-pill" @click="newPosts = 0">
+          <span x-text="newPosts"></span> new — refresh to see
+        </a>
+      </div>
+      {% if feed_panel and feed_panel.posts %}
+        <ul class="slim-list">
+          {% for post in feed_panel.posts %}
+            <li>
+              <a href="{% url 'posts:detail' pk=post.pk %}">{{ post.title }}</a>
+              <small class="muted">by {{ post.author.nickname }} · score {{ post.score }}</small>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="empty-line">No posts yet.</p>
+      {% endif %}
+      {# Tag pills render regardless of whether there are posts — popular tags
+         are still useful navigation even on a quiet day. #}
+      {% if feed_panel and feed_panel.tags %}
+        <div class="tag-pills">
+          {% for tag in feed_panel.tags %}
+            <a class="tag-pill" href="{% url 'tags:detail' slug=tag.slug %}">#{{ tag.name }}</a>
+          {% endfor %}
+        </div>
+      {% endif %}
+    </div>
+  </div>
+</section>
+
+<script>
+  function dashboard() {
+    return {
+      newPosts: 0,
+      onMatchFound(detail) {
+        // Live swap: when a body-double partner is found while sitting on
+        // the dashboard, replace the panel CTA with a Rejoin link.
+        const panel = document.querySelector("#panel-body-double .section-card-body");
+        if (panel && detail && detail.room_url) {
+          panel.innerHTML = `<a class="btn btn-success" href="${detail.room_url}">▶ Rejoin your room</a>`;
+        }
+      },
+    };
+  }
+</script>
+{% endblock %}
+
+{% block head_extra %}
+<style>
+  /* Inline per repo convention — no Tailwind, no build step.
+     Reuses CSS variables defined in static/css/site.css. */
+  [x-cloak] { display: none !important; }
+
+  .dashboard-header { margin-bottom: 1.5rem; }
+  .dashboard-header h1 { margin: 0; }
+  .dashboard-header .muted { color: var(--fg-muted); margin: 0.25rem 0 0; }
+
+  .section-card {
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-bottom: 1.5rem;
+  }
+  .section-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--border);
+    background: #fafafa;
+  }
+  .section-card-header h2 { margin: 0; font-size: 1rem; }
+  .section-card-body { padding: 0.75rem 1rem; }
+
+  .btn {
+    display: inline-block;
+    padding: 0.5rem 1rem;
+    border-radius: 6px;
+    text-decoration: none;
+    font-size: 0.875rem;
+    border: none;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .btn-primary { background: var(--accent); color: white; }
+  .btn-primary:hover { opacity: 0.9; }
+  .btn-secondary { background: white; color: var(--fg); border: 1px solid var(--border); }
+  .btn-secondary:hover { background: #f5f5f5; }
+  .btn-success { background: #e6f4ea; color: #0a6b2c; border: 1px solid #b8e0c4; }
+  .btn-success:hover { background: #d1f0db; }
+  .btn-danger { background: #fee; color: #c00; border: 1px solid #fcc; }
+  .btn-break {
+    background: #fff7e6; color: #8b5a00; border: 2px solid #ffd180;
+    padding: 0.6rem 1.2rem; font-weight: 600;
+  }
+  .btn-break:hover { background: #ffeacc; }
+  .break-button-row { margin-top: 0.75rem; }
+
+  .in-progress-banner {
+    background: #e6f4ea;
+    border: 1px solid #b8e0c4;
+    color: #0a6b2c;
+    padding: 0.5rem 0.75rem;
+    border-radius: 6px;
+    margin-bottom: 0.5rem;
+  }
+
+  .task-row-slim {
+    display: flex;
+    gap: 0.5rem;
+    padding: 0.25rem 0;
+    font-size: 0.95rem;
+  }
+  .task-row-slim .time {
+    font-variant-numeric: tabular-nums;
+    color: var(--fg-muted);
+    min-width: 50px;
+  }
+  .task-row-slim .name { flex: 1; }
+  .task-row-slim .duration { color: var(--fg-muted); font-size: 0.85rem; }
+
+  .empty-line { color: var(--fg-muted); font-size: 0.875rem; margin: 0.25rem 0; }
+  .small { font-size: 0.8rem; }
+  .muted { color: var(--fg-muted); }
+
+  .slim-list { list-style: none; padding: 0; margin: 0; }
+  .slim-list li { padding: 0.4rem 0; border-bottom: 1px solid #f0f0f0; }
+  .slim-list li:last-child { border-bottom: none; }
+  .slim-list a { color: var(--fg); text-decoration: none; font-weight: 500; }
+  .slim-list a:hover { color: var(--accent); }
+
+  .panel-footer { margin-top: 0.5rem; font-size: 0.85rem; color: var(--fg-muted); }
+  .panel-footer a { color: var(--accent); text-decoration: none; }
+
+  .new-posts-pill {
+    display: inline-block;
+    background: var(--accent);
+    color: white;
+    padding: 0.25rem 0.75rem;
+    border-radius: 999px;
+    font-size: 0.85rem;
+    text-decoration: none;
+    margin-bottom: 0.75rem;
+  }
+
+  .tag-pills { margin-top: 0.5rem; }
+  .tag-pill {
+    display: inline-block;
+    padding: 0.15rem 0.6rem;
+    border-radius: 999px;
+    background: #f0f0f0;
+    color: var(--fg-muted);
+    font-size: 0.75rem;
+    text-decoration: none;
+    margin-right: 0.25rem;
+  }
+  .tag-pill:hover { background: rgba(37, 99, 235, 0.1); color: var(--accent); }
+</style>
+{% endblock %}

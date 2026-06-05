@@ -69,6 +69,48 @@ def _today_local_bounds(now: datetime | None = None) -> tuple[datetime, datetime
 
 
 # ---------------------------------------------------------------------------
+# Dashboard helper
+# ---------------------------------------------------------------------------
+def dashboard_today_context(user) -> dict:
+    """Trimmed snapshot of today's plan for the homepage's tasks panel.
+
+    Separate from `apps.tasks.views._today_context` because the dashboard
+    needs only the top of the schedule + a couple of counters, not the
+    full backlog / busy-blocks / completed lists. Lives in services (not
+    views) so the homepage view can import without a circular dependency.
+
+    Returns:
+        {
+            "in_progress_task": Task | None,
+            "next_tasks":       list[Task],   # next 3 scheduled today
+            "total_scheduled":  int,
+            "backlog_count":    int,
+            "default_break_minutes": int,
+        }
+    """
+    day_start, day_end = _today_local_bounds()
+
+    today_qs = (
+        Task.objects.filter(user=user, scheduled_start__gte=day_start, scheduled_start__lt=day_end)
+        .exclude(status__in=[Task.STATUS_DONE, Task.STATUS_SKIPPED])
+        .order_by("scheduled_start")
+    )
+
+    in_progress = Task.objects.filter(user=user, status=Task.STATUS_IN_PROGRESS).first()
+    backlog_count = Task.objects.filter(
+        user=user, status=Task.STATUS_PENDING, scheduled_start__isnull=True
+    ).count()
+
+    return {
+        "in_progress_task": in_progress,
+        "next_tasks": list(today_qs[:3]),
+        "total_scheduled": today_qs.count(),
+        "backlog_count": backlog_count,
+        "default_break_minutes": settings.TASKS_BREAK_MINUTES,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Validation
 # ---------------------------------------------------------------------------
 def _validate_choice(value: str, choices, field: str) -> str:
