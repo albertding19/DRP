@@ -471,17 +471,17 @@ def google_oauth_complete(*, code: str, ip_address: str | None = None) -> tuple[
     if not email:
         raise OAuthError("Google response missing email")
 
-    user, created = find_or_create_user_for_email(email=email, source="google_oauth")
+    user, was_created = find_or_create_user_for_email(email=email, source="google_oauth")
     logger.info(
         "oauth signin complete",
         extra={
             "email": email,
             "user_id": user.pk,
-            "created": created,
+            "was_created": was_created,  # "created" is a reserved LogRecord field
             "ip": ip_address,
         },
     )
-    return user, created
+    return user, was_created
 
 
 # Re-export of OAuthError so view-layer callers can `from services import ...`.
