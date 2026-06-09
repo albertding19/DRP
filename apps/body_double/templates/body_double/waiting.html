@@ -5,37 +5,7 @@
 {% block content %}
 <section
   class="body-double-waiting"
-  x-data="{ elapsed: 0, timedOut: false }"
-  x-init="
-    /* Open the shared WebSocket via the same store used by the feed and
-       post pages. Auto-reconnects with exponential backoff if the WS
-       drops mid-wait. */
-    $store.ws.connect('/ws/matchmaking/{{ request.user.id }}/');
-
-    /* Elapsed-time counter, ticking every second. */
-    setInterval(() => {
-      elapsed++;
-      if (elapsed >= {{ wait_timeout_s }}) { timedOut = true; }
-    }, 1000);
-
-    /* Polling fallback. If the WS misses the match_found event for any
-       reason (race during initial connect, transient disconnect, etc.),
-       this catches it within 5 seconds. The WS path is faster (<100ms)
-       but this guarantees we don't strand the user. */
-    setInterval(async () => {
-      try {
-        const r = await fetch('{% url 'body_double:status' %}', {
-          headers: { 'Accept': 'application/json' },
-          credentials: 'same-origin',
-        });
-        if (!r.ok) return;
-        const data = await r.json();
-        if (data.matched && data.room_url) {
-          window.location.href = data.room_url;
-        }
-      } catch { /* network blip — try again on the next tick */ }
-    }, 5000);
-  "
+  x-data="waitingPage({{ wait_timeout_s }}, {{ request.user.id }}, '{% url 'body_double:status' %}')"
   x-on:ws:match_found.window="
     /* Fast path: server pushed a match event. Redirect immediately. */
     if ($event.detail && $event.detail.room_url) {
@@ -63,6 +33,55 @@
     <button type="submit" class="btn btn-secondary">Cancel</button>
   </form>
 </section>
+
+<script>
+  /* Defined as a named x-data factory so the timer + WS + poll all live
+     inside `init()` with `this.` references. The previous shape
+     (multi-statement x-init with bare `elapsed++`) relied on `with()`
+     scope binding propagating into the setInterval callback, which is
+     fragile in Alpine 3 — the counter would never re-render even though
+     it was incrementing internally. Using `this.elapsed++` is the
+     idiomatic Alpine 3 reactive write. */
+  function waitingPage(waitTimeoutS, userId, statusUrl) {
+    return {
+      elapsed: 0,
+      timedOut: false,
+      init() {
+        // Open the shared WebSocket via the same store used by the feed
+        // and post pages. Auto-reconnects with exponential backoff if
+        // the WS drops mid-wait.
+        this.$store.ws.connect("/ws/matchmaking/" + userId + "/");
+
+        // Elapsed-time counter, ticking every second.
+        setInterval(() => {
+          this.elapsed += 1;
+          if (this.elapsed >= waitTimeoutS) this.timedOut = true;
+        }, 1000);
+
+        // Polling fallback. If the WS misses the match_found event for
+        // any reason (race during initial connect, transient
+        // disconnect, etc.), this catches it within 5 seconds. The WS
+        // path is faster (<100 ms) but this guarantees we don't strand
+        // the user.
+        setInterval(async () => {
+          try {
+            const r = await fetch(statusUrl, {
+              headers: { Accept: "application/json" },
+              credentials: "same-origin",
+            });
+            if (!r.ok) return;
+            const data = await r.json();
+            if (data.matched && data.room_url) {
+              window.location.href = data.room_url;
+            }
+          } catch {
+            /* network blip — try again on the next tick */
+          }
+        }, 5000);
+      },
+    };
+  }
+</script>
 
 <style>
   [x-cloak] { display: none !important; }
