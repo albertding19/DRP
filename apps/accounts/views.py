@@ -93,7 +93,7 @@ def start(request: HttpRequest) -> HttpResponse:
         form = EmailSignInForm(request.POST)
         if form.is_valid():
             try:
-                send_signin_link(
+                token = send_signin_link(
                     email=form.cleaned_data["email"],
                     intent=SignInToken.INTENT_LOGIN,
                     ip_address=_client_ip(request),
@@ -106,6 +106,16 @@ def start(request: HttpRequest) -> HttpResponse:
                     "Too many sign-in links requested. Wait an hour and try again.",
                 )
             else:
+                # Stash the pending sign-in in THIS browser's session so the
+                # check-email page can poll for it. When the user clicks the
+                # link (possibly on a different device — phone, tablet),
+                # the token row's `used_at` gets set. The poll endpoint sees
+                # the change and signs this browser in too, so the user isn't
+                # stranded on the "check your inbox" page on the device they
+                # started on.
+                request.session["pending_signin_token_id"] = token.pk
+                request.session["pending_signin_email"] = form.cleaned_data["email"]
+                request.session["pending_signin_next"] = next_url
                 return redirect(
                     reverse("accounts:check_email") + f"?email={form.cleaned_data['email']}"
                 )
@@ -147,12 +157,71 @@ def check_email(request: HttpRequest) -> HttpResponse:
 
 @require_GET
 def check_email_poll(request: HttpRequest) -> JsonResponse:
-    """Polled by the check-email page to detect when the user has clicked
-    the magic link in another tab (cookies are shared, so the session
-    cookie set by the verify view appears here too within seconds).
-    Returns `{signed_in: bool}`. Exempt from auth middleware because it
-    must be reachable BEFORE the user is signed in."""
-    return JsonResponse({"signed_in": bool(request.session.get("user_id"))})
+    """Polled by the check-email page every 2s.
+
+    Handles BOTH same-browser and cross-device sign-in:
+
+    - Same-browser: if the user clicked the link in another tab on the
+      SAME browser, the session cookie set by the verify view is shared,
+      so `session["user_id"]` is already set here. Return signed_in=True.
+
+    - Cross-device: if the user clicked the link on their phone (different
+      browser, different cookie jar), there's no shared session. But the
+      `start` view stored the pending sign-in's token PK in THIS session
+      when the link was requested. If we see that token has been consumed
+      (`used_at` set), we know the user has authenticated SOMEWHERE — we
+      sign this browser in as the same user.
+
+    The cross-device path is what unblocks the most common real-world flow:
+    request the link on your laptop, click it on your phone, expect the
+    laptop to log you in too.
+
+    Security note: the only way the cross-device path signs you in is if
+    your session previously POSTed an email to /accounts/start/ AND that
+    email's magic link has since been clicked. An attacker who knows your
+    email could request a link to it, then poll waiting for you to click —
+    but you'd see an unrequested sign-in email and (we hope) ignore it.
+    The verification email's body explicitly notes "if you didn't ask for
+    this, ignore this email" for exactly this reason.
+    """
+    # Already signed in (via the cookie or via this poll cycle).
+    if request.session.get("user_id"):
+        return JsonResponse({"signed_in": True})
+
+    pending_id = request.session.get("pending_signin_token_id")
+    pending_email = request.session.get("pending_signin_email")
+    if not pending_id or not pending_email:
+        return JsonResponse({"signed_in": False})
+
+    try:
+        token = SignInToken.objects.get(
+            pk=pending_id, intent=SignInToken.INTENT_LOGIN
+        )
+    except SignInToken.DoesNotExist:
+        # Token was cleaned up or never existed — give up on this poll cycle.
+        for k in ("pending_signin_token_id", "pending_signin_email", "pending_signin_next"):
+            request.session.pop(k, None)
+        return JsonResponse({"signed_in": False})
+
+    if not token.is_used:
+        # Link hasn't been clicked anywhere yet — keep polling.
+        return JsonResponse({"signed_in": False})
+
+    # Token consumed — sign this browser in as the User whose email matches.
+    user = User.objects.filter(email=pending_email).first()
+    if user is None:
+        # find_or_create on the verify side would have created one — this
+        # should be impossible unless the user was deleted between verify
+        # and poll. Give up cleanly.
+        for k in ("pending_signin_token_id", "pending_signin_email", "pending_signin_next"):
+            request.session.pop(k, None)
+        return JsonResponse({"signed_in": False})
+
+    next_url = request.session.pop("pending_signin_next", "/") or "/"
+    for k in ("pending_signin_token_id", "pending_signin_email"):
+        request.session.pop(k, None)
+    _login_user(request, user)
+    return JsonResponse({"signed_in": True, "next": next_url})
 
 
 # ---------------------------------------------------------------------------

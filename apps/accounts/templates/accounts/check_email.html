@@ -30,7 +30,7 @@
           this.polledOnce = true;
           if (data.signed_in) {
             clearInterval(tick);
-            window.location.href = '/';
+            window.location.href = data.next || '/';
           }
         } catch (e) { /* transient network blip; try again next tick */ }
       }, 2000);
