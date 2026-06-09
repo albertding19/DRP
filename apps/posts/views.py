@@ -96,14 +96,33 @@ def create(request: HttpRequest) -> HttpResponse:
     if request.method == "POST":
         form = PostForm(request.POST, author=request.user)
         if form.is_valid():
-            post = create_post(
+            create_post(
                 author=request.user,
                 title=form.cleaned_data["title"],
                 body=form.cleaned_data["body"],
                 post_type=form.cleaned_data["post_type"],
                 tag_names=form.cleaned_data.get("tags") or [],
             )
-            return redirect(reverse("posts:detail", args=[post.pk]))
+            # Mockup (M2 slide 7): land back on the feed with the new post
+            # at the top and a sage success banner — the "loop closes" UX.
+            return redirect(reverse("posts:feed") + "?shared=1")
     else:
         form = PostForm()
-    return render(request, "posts/form.html", {"form": form})
+    return render(
+        request,
+        "posts/form.html",
+        {
+            "form": form,
+            # Preset suggestion pills for the "Tag it" row. Clicking a
+            # preset appends/removes from the comma-separated tags input
+            # via the Alpine state in the template. Plain text so users
+            # can still type their own.
+            "preset_tags": [
+                "Worked for me",
+                "Time management",
+                "Focus & attention",
+                "Asking for help",
+                "Sleep & routine",
+            ],
+        },
+    )

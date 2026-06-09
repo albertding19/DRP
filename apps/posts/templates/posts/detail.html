@@ -4,7 +4,7 @@
 
 {% block content %}
 <article
-  class="post-detail"
+  class="post-detail prose"
   x-data
   x-init="$store.ws.connect('/ws/posts/{{ post.id }}/')"
   x-on:ws:comment_created.window="
@@ -46,17 +46,33 @@
     if (body) body.innerHTML = '<em>This post has been hidden pending review.</em>';
   "
 >
-  <a href="{% url 'posts:feed' %}" class="back-link">← Back to feed</a>
+  <a href="{% url 'posts:feed' %}" class="back-link">← {{ PROJECT_NAME }}</a>
 
   <header class="post-detail-header">
-    <span class="post-card-type post-card-type-{{ post.post_type }}">
-      {{ post.get_post_type_display }}
-    </span>
+    <p class="post-card-tags">
+      {% for tag in post.tags.all %}
+        {% if tag.slug == "worked-for-me" %}
+          <a href="{% url 'tags:detail' slug=tag.slug %}" class="tag tag-worked">{{ tag.name }}</a>
+        {% elif tag.slug == "time-management" %}
+          <a href="{% url 'tags:detail' slug=tag.slug %}" class="tag tag-time">{{ tag.name }}</a>
+        {% elif tag.slug == "focus-and-attention" or tag.slug == "focus" %}
+          <a href="{% url 'tags:detail' slug=tag.slug %}" class="tag tag-focus">{{ tag.name }}</a>
+        {% elif tag.slug == "asking-for-help" or tag.slug == "on-the-waitlist" %}
+          <a href="{% url 'tags:detail' slug=tag.slug %}" class="tag tag-asking">{{ tag.name }}</a>
+        {% else %}
+          <a href="{% url 'tags:detail' slug=tag.slug %}" class="tag">{{ tag.name }}</a>
+        {% endif %}
+      {% endfor %}
+      <span class="post-card-type post-card-type-{{ post.post_type }}">{{ post.get_post_type_display }}</span>
+    </p>
+
     <h1>{{ post.title }}</h1>
+
     <p class="post-detail-meta">
-      by {{ post.author.nickname|default:"[deleted]" }}
-      ·
-      {{ post.created_at|date:"j M Y, H:i" }}
+      {% with nick=post.author.nickname|default:"?" %}
+        <span class="avatar" aria-hidden="true">{{ nick|slice:":1"|upper }}</span>
+        <span>{{ nick }} · {{ post.created_at|date:"j M Y, H:i" }}</span>
+      {% endwith %}
     </p>
   </header>
 
@@ -64,16 +80,11 @@
     {{ post.body|linebreaksbr }}
   </div>
 
-  {% if post.tags.all %}
-    <p class="post-detail-tags">
-      {% for tag in post.tags.all %}
-        <a href="{% url 'tags:detail' slug=tag.slug %}" class="tag-pill-sm">#{{ tag.name }}</a>
-      {% endfor %}
-    </p>
-  {% endif %}
-
   <div class="post-detail-actions">
-    {% include "votes/_vote_buttons.html" with target=post target_type="post" %}
+    <div class="affirm-vote">
+      {% include "votes/_vote_buttons.html" with target=post target_type="post" %}
+      <span class="affirm-label">found this helpful</span>
+    </div>
     {% if request.user.is_authenticated and post.author_id != request.user.id %}
       <form
         method="post"
@@ -96,20 +107,94 @@
 
 {% block head_extra %}
 <style>
-  .back-link { color: var(--fg-muted); text-decoration: none; font-size: 0.875rem; }
-  .back-link:hover { color: var(--accent); }
+  .post-detail { padding-top: 0.5rem; }
+
+  .back-link {
+    color: var(--ink-muted);
+    text-decoration: none;
+    font-size: 0.875rem;
+    font-family: var(--font-serif);
+  }
+  .back-link:hover { color: var(--terracotta); }
+
   .post-detail-header { margin: 1.5rem 0; }
-  .post-detail-header h1 { margin: 0.5rem 0; }
-  .post-card-type { display: inline-block; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; padding: 0.15rem 0.5rem; border-radius: 3px; }
-  .post-card-type-problem { background: #fef3c7; color: #92400e; }
-  .post-card-type-strategy { background: #dcfce7; color: #166534; }
-  .post-detail-meta { color: var(--fg-muted); font-size: 0.875rem; margin: 0; }
-  .post-detail-body { background: white; padding: 1.5rem; border: 1px solid var(--border); border-radius: 8px; margin: 1.5rem 0; }
-  .post-detail-actions { margin: 1rem 0; }
-  .comments-placeholder { margin-top: 3rem; padding-top: 1.5rem; border-top: 1px solid var(--border); }
-  .muted { color: var(--fg-muted); font-style: italic; }
-  .post-detail-tags { display: flex; flex-wrap: wrap; gap: 0.3rem; margin: 0.5rem 0 1rem; }
-  .tag-pill-sm { background: rgba(37, 99, 235, 0.08); color: var(--accent); padding: 0.15rem 0.55rem; border-radius: 999px; text-decoration: none; font-size: 0.8rem; }
-  .tag-pill-sm:hover { background: rgba(37, 99, 235, 0.15); }
+  .post-detail-header h1 {
+    margin: 0.75rem 0 0.5rem;
+    font-size: 1.85rem;
+    font-family: var(--font-serif);
+    line-height: 1.2;
+  }
+  .post-card-tags { margin: 0 0 0.5rem; display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: center; }
+  .post-card-type {
+    display: inline-block;
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 0.15rem 0.55rem;
+    border-radius: var(--radius-sm);
+  }
+  .post-card-type-problem { background: var(--tag-asking); color: var(--tag-asking-ink); }
+  .post-card-type-strategy { background: var(--tag-worked); color: var(--tag-worked-ink); }
+
+  .post-detail-meta {
+    color: var(--ink-muted);
+    font-size: 0.9rem;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .avatar {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.65rem;
+    height: 1.65rem;
+    border-radius: 50%;
+    background: var(--tag-worked);
+    color: var(--tag-worked-ink);
+    font-weight: 700;
+    font-family: var(--font-serif);
+    font-size: 0.85rem;
+  }
+
+  .post-detail-body {
+    margin: 1.5rem 0;
+    color: var(--ink);
+    font-size: 1.05rem;
+    line-height: 1.65;
+  }
+
+  .post-detail-actions {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin: 1.5rem 0;
+    padding: 1rem 0;
+    border-top: 1px solid var(--border-color);
+    border-bottom: 1px solid var(--border-color);
+  }
+  .affirm-vote { display: flex; align-items: center; gap: 0.5rem; }
+  .affirm-label {
+    color: var(--ink-muted);
+    font-size: 0.9rem;
+    font-style: italic;
+  }
+  .post-report-form { margin-left: auto; }
+  .comment-action-report {
+    background: transparent;
+    border: 1px solid var(--border-color);
+    color: var(--ink-muted);
+    font-size: 0.85rem;
+    padding: 0.3rem 0.7rem;
+    border-radius: var(--radius-md);
+  }
+  .comment-action-report:hover {
+    background: var(--bg-sunk);
+    color: var(--ink);
+  }
+
+  .muted { color: var(--ink-muted); font-style: italic; }
 </style>
 {% endblock %}

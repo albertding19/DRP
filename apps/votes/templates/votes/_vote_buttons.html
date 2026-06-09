@@ -59,16 +59,50 @@ becomes `''` (not `None`) in Django's template context.
 {% endwith %}
 
 <style>
-  /* Reddit-style pill: large, padded, rounded, with the score number front-
-     and-centre between the arrows. The whole control reads as one widget. */
-  .vote-buttons { display: inline-flex; flex-direction: column; align-items: stretch; gap: 0.25rem; padding: 0.5rem 0.4rem; margin: 0; border: 1px solid var(--border); border-radius: 10px; background: #f7f8fa; min-width: 3.25rem; }
-  .vote-buttons button { background: transparent; border: 0; color: var(--fg-muted); cursor: pointer; padding: 0.2rem 0.4rem; font-size: 1.15rem; line-height: 1; border-radius: 6px; transition: background 80ms, color 80ms; }
-  .vote-buttons button:hover { background: rgba(0,0,0,0.06); color: var(--fg); }
-  .vote-buttons .vote-up.active { color: #2563eb; background: rgba(37, 99, 235, 0.12); }
-  .vote-buttons .vote-down.active { color: #c00; background: rgba(204, 0, 0, 0.10); }
-  .vote-buttons .vote-score { display: block; font-size: 1.25rem; font-weight: 700; color: var(--fg); text-align: center; line-height: 1.1; font-variant-numeric: tabular-nums; min-height: 1.4rem; }
-  .vote-buttons .vote-score.voted-up { color: #2563eb; }
-  .vote-buttons .vote-score.voted-down { color: #c00; }
+  /* Vertical upvote pillar — terracotta ▲, number below, downvote hidden
+     by default (slide 4 of the M2 prototype shows only ▲ + count). The
+     downvote button is still rendered for accessibility / keyboard users,
+     just visually muted. */
+  .vote-buttons {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.15rem;
+    padding: 0.3rem 0.4rem;
+    margin: 0;
+    background: transparent;
+    border: 0;
+    min-width: 2.4rem;
+  }
+  .vote-buttons button {
+    background: transparent;
+    border: 0;
+    color: var(--terracotta);
+    cursor: pointer;
+    padding: 0.1rem 0.25rem;
+    font-size: 1.1rem;
+    line-height: 1;
+    border-radius: var(--radius-sm);
+    transition: background 80ms ease, color 80ms ease;
+  }
+  .vote-buttons button:hover { background: rgba(160, 90, 60, 0.10); }
+  .vote-buttons .vote-down { color: var(--ink-muted); opacity: 0.5; font-size: 0.9rem; }
+  .vote-buttons .vote-down:hover { opacity: 1; color: var(--ink); }
+  .vote-buttons .vote-up.active { color: var(--terracotta); background: rgba(160, 90, 60, 0.14); }
+  .vote-buttons .vote-down.active { color: #8a3030; background: rgba(138, 48, 48, 0.10); opacity: 1; }
+  .vote-buttons .vote-score {
+    display: block;
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--terracotta);
+    text-align: center;
+    line-height: 1.1;
+    font-variant-numeric: tabular-nums;
+    min-height: 1.4rem;
+    font-family: var(--font-sans);
+  }
+  .vote-buttons .vote-score.voted-up { color: var(--terracotta); }
+  .vote-buttons .vote-score.voted-down { color: #8a3030; }
 
   /* Compact horizontal variant — used for comments. No outer pill chrome
      because it sits inside the comment's footer next to Reply/Delete. */

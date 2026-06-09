@@ -4,6 +4,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}{{ PROJECT_NAME }}{% endblock %}</title>
+  {% comment %}
+    Source Serif 4 for headings + brand mark. System serif is the
+    fallback so the site stays readable if the CDN is blocked.
+  {% endcomment %}
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{% static 'css/site.css' %}">
   <script defer src="{% static 'js/htmx.min.js' %}"></script>
   <script defer src="{% static 'js/alpine.min.js' %}"></script>
@@ -13,13 +20,14 @@
 <body hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
   <header class="site-header">
     <a href="/" class="site-brand">{{ PROJECT_NAME }}</a>
+    <span class="site-tagline">{{ PROJECT_TAGLINE }}</span>
     {% if request.user.is_authenticated %}
       <form action="/search/" method="get" class="site-search" role="search">
         <input
           type="search"
           name="q"
-          placeholder="Search posts…"
-          aria-label="Search posts"
+          placeholder="Search strategies…"
+          aria-label="Search strategies"
           value="{{ request.GET.q|default:'' }}"
         >
       </form>
@@ -27,13 +35,52 @@
     {% endif %}
   </header>
 
-  <main class="site-main">
-    {% block content %}{% endblock %}
+  {% comment %}
+    Conditional outer wrapper:
+    - authenticated → sidebar + content grid
+    - anonymous     → single centred column (nickname picker)
+    Single content block works for both because Django renders the
+    conditional tags top-down.
+  {% endcomment %}
+  {% if request.user.is_authenticated %}
+    {% with vn=request.resolver_match.view_name|default:"" %}
+    <div class="site-shell">
+      <nav class="site-sidebar" aria-label="Primary navigation">
+        <h3>Where to</h3>
+        <ul>
+          <li><a href="{% url 'home' %}" class="{% if vn == 'home' %}active{% endif %}">Home</a></li>
+          <li><a href="{% url 'tasks:index' %}" class="{% if 'tasks' in vn %}active{% endif %}">Tasks</a></li>
+          <li><a href="{% url 'body_double:index' %}" class="{% if 'body_double' in vn %}active{% endif %}">Body double</a></li>
+          <li><a href="{% url 'communities:list' %}" class="{% if 'communities' in vn %}active{% endif %}">Communities</a></li>
+          <li><a href="{% url 'posts:feed' %}" class="{% if 'posts:' in vn %}active{% endif %}">Feed</a></li>
+        </ul>
+
+        <hr>
+
+        <h3>Categories</h3>
+        <ul>
+          <li><a href="{% url 'posts:feed' %}">All strategies</a></li>
+          <li><a href="{% url 'posts:feed' %}?tag=focus-and-attention">Focus &amp; attention</a></li>
+          <li><a href="{% url 'posts:feed' %}?tag=time-management">Time management</a></li>
+          <li><a href="{% url 'posts:feed' %}?tag=emotional-regulation">Emotional regulation</a></li>
+          <li><a href="{% url 'posts:feed' %}?tag=sleep-and-routine">Sleep &amp; routine</a></li>
+          <li><a href="{% url 'posts:feed' %}?tag=on-the-waitlist">On the waitlist</a></li>
+        </ul>
+      </nav>
+      <main class="site-main">
+    {% endwith %}
+  {% else %}
+    <main class="site-main prose">
+  {% endif %}
+
+  {% block content %}{% endblock %}
+
   </main>
+  {% if request.user.is_authenticated %}</div>{% endif %}
 
   <footer class="site-footer">
     <small>
-      DRP · Designing for Real People 2026 ·
+      unmasked · Designing for Real People 2026 ·
       build <code>{{ BUILD_COMMIT }}</code>
     </small>
   </footer>

@@ -1,11 +1,72 @@
-/* Minimal styles — placeholder; real design comes after M2. */
+/* unmasked design tokens + reusable components.
+ *
+ * Palette extracted from the M2 prototype (DRP_M2_Concept_Development.pptx,
+ * slides 4–7). Earthy, journal-like: cream parchment surfaces, deep olive
+ * chrome, terracotta CTAs, sage/beige tag families, dark warm-brown ink.
+ *
+ * The token names are NEW (--ink, --bg, --olive, --terracotta, etc.) but
+ * the legacy aliases at the bottom (--fg, --fg-muted, --accent, --border)
+ * keep every existing inline <style> block in the apps/* templates
+ * working. So tasks, body-double, communities, dashboard pages all pick
+ * up the warm palette today without per-template edits.
+ */
 
 :root {
-  --fg: #1a1a1a;
-  --fg-muted: #666;
-  --bg: #fafafa;
-  --accent: #2563eb;
-  --border: #e5e7eb;
+  /* Surfaces */
+  --bg:               #f5f1e8;   /* cream / parchment — page background */
+  --bg-elevated:      #fefcf7;   /* card surface, slightly lighter than bg */
+  --bg-sunk:          #ede7d8;   /* sidebar selected item, reply box */
+
+  /* Ink */
+  --ink:              #3b2a1a;   /* body text — dark warm brown */
+  --ink-muted:        #7a6a55;   /* meta, captions */
+  --ink-inverse:      #fefcf7;   /* on dark olive header */
+
+  /* Brand */
+  --olive:            #4a5a35;   /* top header bar, "loop closes" pill */
+  --olive-soft:       #6b7a4f;   /* hover state for olive */
+  --terracotta:       #a05a3c;   /* primary CTAs, upvote arrows */
+  --terracotta-soft:  #b8704e;   /* hover state for terracotta */
+
+  /* Tag swatches — named, fixed set */
+  --tag-worked:       #d4e5c8;   /* sage — "Worked for me" / success */
+  --tag-worked-ink:   #3e5c2e;
+  --tag-time:         #e6d8b8;   /* warm beige — "Time management" */
+  --tag-time-ink:     #6f5a30;
+  --tag-focus:        #cdb8c6;   /* muted purple — "Focus & attention" */
+  --tag-focus-ink:    #5a3f54;
+  --tag-asking:       #f0d8c0;   /* peach — "Asking for help" */
+  --tag-asking-ink:   #7a4a28;
+
+  /* Geometry */
+  --border-color:     #d8cdb8;
+  --radius-sm:        4px;
+  --radius-md:        10px;
+  --radius-lg:        16px;
+  --radius-pill:      999px;
+
+  --shadow-card:      0 1px 2px rgba(59, 42, 26, 0.06);
+  --shadow-lift:      0 4px 12px rgba(59, 42, 26, 0.10);
+
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+
+  /* Typography */
+  --font-serif: "Source Serif 4", "Source Serif Pro", Georgia, "Times New Roman", serif;
+  --font-sans:  -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+
+  /* Legacy aliases — keep existing inline-style references in
+     apps/<app>/templates/ working unchanged. Mapping them to the new
+     palette flips every page onto the warm look without per-template
+     edits in this PR. */
+  --fg:        var(--ink);
+  --fg-muted:  var(--ink-muted);
+  --accent:    var(--terracotta);
+  --border:    var(--border-color);
 }
 
 * { box-sizing: border-box; }
@@ -15,111 +76,301 @@ html {
      pages of differing height. */
   overflow-y: scroll;
   scroll-behavior: smooth;
-  /* Firefox: force the bar to render and pick our colours. */
   scrollbar-width: auto;
-  scrollbar-color: #b0b4bd #f0f1f3;
+  scrollbar-color: #b0a594 #ede7d8;
 }
 
 /* Custom-styled scrollbars override macOS's "auto-hide" preference, so
    users without scroll wheels (trackpad-only, tablet, mouse without
    middle wheel) can grab the thumb to drag. WebKit covers Chrome,
    Safari, Edge; the Firefox equivalent is the `scrollbar-*` props above. */
-::-webkit-scrollbar {
-  width: 12px;
-  height: 12px;
-}
-::-webkit-scrollbar-track {
-  background: #f0f1f3;
-}
-::-webkit-scrollbar-thumb {
-  background: #b0b4bd;
-  border: 2px solid #f0f1f3;
-  border-radius: 6px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: #8a8f99;
-}
-::-webkit-scrollbar-corner {
-  background: #f0f1f3;
-}
+::-webkit-scrollbar       { width: 12px; height: 12px; }
+::-webkit-scrollbar-track { background: var(--bg-sunk); }
+::-webkit-scrollbar-thumb { background: #b0a594; border: 2px solid var(--bg-sunk); border-radius: 6px; }
+::-webkit-scrollbar-thumb:hover { background: #8a8073; }
+::-webkit-scrollbar-corner { background: var(--bg-sunk); }
 
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  font-family: var(--font-sans);
   font-size: 16px;
-  line-height: 1.5;
-  color: var(--fg);
+  line-height: 1.55;
+  color: var(--ink);
   background: var(--bg);
 }
 
+a { color: var(--terracotta); }
+a:hover { color: var(--terracotta-soft); }
+
+/* Headings use the serif by default. Individual pages can opt out. */
+h1, h2, h3, h4 {
+  font-family: var(--font-serif);
+  color: var(--ink);
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+/* ---------------------------------------------------------------- */
+/* Site chrome — olive header + sidebar shell                       */
+/* ---------------------------------------------------------------- */
 .site-header {
   display: flex;
   align-items: center;
-  gap: 1rem;
-  padding: 1rem 1.5rem;
-  border-bottom: 1px solid var(--border);
-  background: white;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  background: var(--olive);
+  color: var(--ink-inverse);
+  font-family: var(--font-serif);
 }
-
+.site-brand {
+  font-weight: 700;
+  font-size: 1.35rem;
+  text-decoration: none;
+  color: var(--ink-inverse);
+  letter-spacing: 0.01em;
+}
+.site-tagline {
+  color: rgba(254, 252, 247, 0.7);
+  font-size: 0.875rem;
+  font-style: italic;
+  font-family: var(--font-sans);
+}
+.site-tagline::before { content: "·"; margin-right: 0.5rem; }
 .site-search {
   flex: 1;
   max-width: 360px;
-  margin: 0 auto;
+  margin-left: auto;
 }
-
 .site-search input {
   width: 100%;
   font-size: 0.875rem;
   padding: 0.4rem 0.75rem;
+  background: rgba(254, 252, 247, 0.92);
+  border-radius: var(--radius-pill);
+  border: 1px solid transparent;
+  color: var(--ink);
 }
-
-.site-brand {
-  font-weight: 700;
-  text-decoration: none;
-  color: var(--fg);
-}
-
 .site-user {
-  color: var(--fg-muted);
+  color: rgba(254, 252, 247, 0.85);
   font-size: 0.875rem;
+  font-family: var(--font-sans);
+}
+
+.site-shell {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  min-height: calc(100vh - 64px);
+}
+.site-sidebar {
+  background: var(--bg-elevated);
+  border-right: 1px solid var(--border-color);
+  padding: var(--space-5) 0;
+  position: sticky;
+  top: 0;
+  align-self: start;
+}
+.site-sidebar h3 {
+  font-family: var(--font-sans);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ink-muted);
+  margin: var(--space-4) var(--space-5) var(--space-2);
+}
+.site-sidebar ul { list-style: none; padding: 0; margin: 0; }
+.site-sidebar a {
+  display: block;
+  padding: 0.55rem var(--space-5);
+  color: var(--ink);
+  text-decoration: none;
+  font-family: var(--font-sans);
+  font-weight: 500;
+  font-size: 0.95rem;
+  border-left: 3px solid transparent;
+}
+.site-sidebar a:hover { background: var(--bg-sunk); color: var(--ink); }
+.site-sidebar a.active {
+  background: var(--bg-sunk);
+  border-left-color: var(--olive);
+  font-weight: 600;
+}
+.site-sidebar hr {
+  border: 0;
+  border-top: 1px solid var(--border-color);
+  margin: var(--space-3) var(--space-5);
 }
 
 .site-main {
+  padding: var(--space-5);
+}
+/* Pages that want a narrow centred column (forms, post detail) opt in. */
+.prose {
   max-width: 720px;
   margin: 0 auto;
-  padding: 2rem 1.5rem;
 }
 
 .site-footer {
   text-align: center;
-  padding: 1.5rem;
-  color: var(--fg-muted);
+  padding: var(--space-5);
+  color: var(--ink-muted);
   font-size: 0.75rem;
-  border-top: 1px solid var(--border);
-  margin-top: 4rem;
+  border-top: 1px solid var(--border-color);
+  margin-top: var(--space-6);
 }
-
 .site-footer code {
-  background: #eee;
+  background: var(--bg-sunk);
   padding: 0.1rem 0.4rem;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 
-a { color: var(--accent); }
-
-input, button, textarea {
-  font: inherit;
-  padding: 0.5rem 0.75rem;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: white;
-}
-
-button {
+/* ---------------------------------------------------------------- */
+/* Reusable components                                              */
+/* ---------------------------------------------------------------- */
+.btn {
+  display: inline-block;
+  padding: 0.55rem 1.1rem;
+  border-radius: var(--radius-md);
+  text-decoration: none;
+  font-family: inherit;
+  font-size: 0.95rem;
+  font-weight: 600;
+  border: 1px solid transparent;
   cursor: pointer;
-  background: var(--accent);
-  color: white;
-  border-color: var(--accent);
+  transition: background 120ms ease, color 120ms ease;
+}
+.btn-primary {
+  background: var(--terracotta);
+  color: var(--ink-inverse);
+  border-color: var(--terracotta);
+}
+.btn-primary:hover { background: var(--terracotta-soft); border-color: var(--terracotta-soft); color: var(--ink-inverse); }
+.btn-secondary {
+  background: var(--bg-elevated);
+  color: var(--ink);
+  border-color: var(--border-color);
+}
+.btn-secondary:hover { background: var(--bg-sunk); color: var(--ink); }
+.btn-pill { border-radius: var(--radius-pill); padding: 0.4rem 1rem; }
+
+/* Tag pills — used in feed, post detail, share form */
+.tag {
+  display: inline-block;
+  padding: 0.2rem 0.7rem;
+  border-radius: var(--radius-pill);
+  font-size: 0.78rem;
+  font-weight: 600;
+  font-family: var(--font-sans);
+  text-decoration: none;
+  background: var(--bg-sunk);
+  color: var(--ink-muted);
+}
+.tag-worked { background: var(--tag-worked); color: var(--tag-worked-ink); }
+.tag-time   { background: var(--tag-time);   color: var(--tag-time-ink); }
+.tag-focus  { background: var(--tag-focus);  color: var(--tag-focus-ink); }
+.tag-asking { background: var(--tag-asking); color: var(--tag-asking-ink); }
+
+/* Selectable tag pill — used as a styled checkbox in the share form */
+.tag-selectable {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.35rem 1rem;
+  border-radius: var(--radius-pill);
+  background: var(--bg-sunk);
+  color: var(--ink-muted);
+  font-weight: 600;
+  font-size: 0.85rem;
+  cursor: pointer;
+  user-select: none;
+  border: 1px solid transparent;
+}
+.tag-selectable input { display: none; }
+.tag-selectable.is-selected,
+.tag-selectable:has(input:checked) {
+  background: var(--tag-worked);
+  color: var(--tag-worked-ink);
 }
 
-button:hover { opacity: 0.9; }
+/* Cards — used by feed posts, replies, panels */
+.card {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+}
+.card:hover { box-shadow: var(--shadow-lift); }
+
+/* Confirmation banner ("Your strategy is now live") */
+.banner-success {
+  background: var(--tag-worked);
+  color: var(--tag-worked-ink);
+  border: 1px solid #b8d4a8;
+  border-radius: var(--radius-md);
+  padding: 0.75rem 1rem;
+  font-weight: 600;
+  margin-bottom: var(--space-4);
+}
+.banner-success::before { content: "✓ "; }
+
+/* "the loop closes" pill — slide 7 */
+.pill-loop {
+  display: inline-block;
+  background: var(--olive);
+  color: var(--ink-inverse);
+  padding: 0.5rem 1.1rem;
+  border-radius: var(--radius-pill);
+  font-weight: 600;
+  font-size: 0.9rem;
+  text-decoration: none;
+}
+.pill-loop:hover { background: var(--olive-soft); color: var(--ink-inverse); }
+
+/* Vertical upvote control — feed cards (slide 4, 7) */
+.upvote {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.1rem;
+  color: var(--terracotta);
+  min-width: 30px;
+  font-weight: 700;
+  font-family: var(--font-sans);
+}
+.upvote .arrow { font-size: 1.1rem; line-height: 1; }
+.upvote .count { font-size: 1rem; }
+
+/* Hover tooltip ("tap to open") — small dark-terracotta pill */
+.hint-tooltip {
+  display: inline-block;
+  background: var(--terracotta);
+  color: var(--ink-inverse);
+  padding: 0.2rem 0.7rem;
+  border-radius: var(--radius-pill);
+  font-size: 0.78rem;
+  font-weight: 500;
+}
+
+/* Form inputs — default style for inputs inside the site */
+input, textarea, select {
+  font: inherit;
+  color: var(--ink);
+  padding: 0.55rem 0.8rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated);
+}
+input:focus, textarea:focus, select:focus {
+  outline: 2px solid var(--terracotta-soft);
+  outline-offset: -1px;
+}
+
+/* Reset the global bare `button { ... }` to use our tokens */
+button {
+  font: inherit;
+  cursor: pointer;
+  background: var(--terracotta);
+  color: var(--ink-inverse);
+  border: 1px solid var(--terracotta);
+  border-radius: var(--radius-md);
+  padding: 0.55rem 1.1rem;
+}
+button:hover { background: var(--terracotta-soft); border-color: var(--terracotta-soft); }

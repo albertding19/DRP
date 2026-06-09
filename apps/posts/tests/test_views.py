@@ -32,11 +32,13 @@ class TestFeed:
     def test_authed_user_sees_feed(self, authed_client) -> None:
         # Feed moved from `/` to `/feed/` when the dashboard homepage shipped;
         # `/` now serves the dashboard. Anon redirect logic (above) is unchanged.
+        # H1 is now "Strategies that actually work" (M2 brand pass); empty
+        # state copy is "No strategies yet."
         client, _ = authed_client
         response = client.get("/feed/")
         assert response.status_code == 200
         assert b"Strategies" in response.content
-        assert b"No posts yet" in response.content
+        assert b"No strategies yet" in response.content
 
     def test_feed_lists_existing_posts(self, authed_client) -> None:
         client, user = authed_client
@@ -67,6 +69,9 @@ class TestCreate:
         assert b"Share" in response.content
 
     def test_post_creates_and_redirects(self, authed_client) -> None:
+        # M2 brand pass: after sharing, land back on /feed/?shared=1 so the
+        # feed's success banner fires (slide 7 of the prototype). Was
+        # previously a redirect to the new post's detail page.
         client, _ = authed_client
         response = client.post(
             "/posts/new/",
@@ -74,8 +79,7 @@ class TestCreate:
         )
         assert response.status_code == 302
         assert Post.objects.filter(title="Test post").exists()
-        post = Post.objects.get(title="Test post")
-        assert response.url == f"/posts/{post.pk}/"
+        assert response.url == "/feed/?shared=1"
 
     def test_post_validation_error_re_renders_form(self, authed_client) -> None:
         client, _ = authed_client

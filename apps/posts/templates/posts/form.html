@@ -3,9 +3,22 @@
 {% block title %}Share — {{ PROJECT_NAME }}{% endblock %}
 
 {% block content %}
-<section class="share">
-  <a href="{% url 'posts:feed' %}" class="back-link">← Back to feed</a>
-  <h1>Share</h1>
+<section class="share prose"
+  x-data="{
+    tags: '{{ form.tags.value|default_if_none:''|escapejs }}',
+    toggle(name) {
+      const parts = this.tags.split(',').map(s => s.trim()).filter(Boolean);
+      const i = parts.findIndex(p => p.toLowerCase() === name.toLowerCase());
+      if (i === -1) parts.push(name); else parts.splice(i, 1);
+      this.tags = parts.join(', ');
+    },
+    has(name) {
+      return this.tags.split(',').map(s => s.trim().toLowerCase()).includes(name.toLowerCase());
+    },
+  }"
+>
+  <a href="{% url 'posts:feed' %}" class="back-link">← {{ PROJECT_NAME }}</a>
+  <h1>Share a strategy</h1>
 
   <form method="post" class="share-form">
     {% csrf_token %}
@@ -24,27 +37,45 @@
     </fieldset>
 
     <div class="form-row">
-      <label for="{{ form.title.id_for_label }}">{{ form.title.label }}</label>
+      <label for="{{ form.title.id_for_label }}">What's the strategy?</label>
       {{ form.title }}
       {% if form.title.errors %}<div class="form-error">{{ form.title.errors.0 }}</div>{% endif %}
     </div>
 
     <div class="form-row">
-      <label for="{{ form.body.id_for_label }}">{{ form.body.label }}</label>
+      <label for="{{ form.body.id_for_label }}">How does it help you?</label>
       {{ form.body }}
       {% if form.body.errors %}<div class="form-error">{{ form.body.errors.0 }}</div>{% endif %}
     </div>
 
     <div class="form-row">
-      <label for="{{ form.tags.id_for_label }}">Tags</label>
-      {{ form.tags }}
+      <label for="{{ form.tags.id_for_label }}">Tag it</label>
+      <div class="tag-pickers">
+        {% for preset in preset_tags %}
+          <button
+            type="button"
+            class="tag-selectable"
+            :class="has('{{ preset|escapejs }}') ? 'is-selected' : ''"
+            @click="toggle('{{ preset|escapejs }}')"
+          >{{ preset }}</button>
+        {% endfor %}
+      </div>
+      <input
+        type="text"
+        name="tags"
+        id="{{ form.tags.id_for_label }}"
+        x-model="tags"
+        placeholder="add your own, comma-separated"
+        autocomplete="off"
+        maxlength="200"
+      >
       <small class="form-help">{{ form.tags.help_text }}</small>
       {% if form.tags.errors %}<div class="form-error">{{ form.tags.errors.0 }}</div>{% endif %}
     </div>
 
     <div class="form-actions">
       <a href="{% url 'posts:feed' %}" class="btn btn-secondary">Cancel</a>
-      <button type="submit" class="btn btn-primary">Share</button>
+      <button type="submit" class="btn btn-primary">Post to the community</button>
     </div>
   </form>
 </section>
@@ -52,23 +83,73 @@
 
 {% block head_extra %}
 <style>
-  .share { max-width: 600px; }
-  .share h1 { margin: 1rem 0 2rem; }
+  .share { padding-top: 0.5rem; }
+  .share h1 {
+    margin: 1rem 0 1.75rem;
+    font-size: 1.85rem;
+    font-family: var(--font-serif);
+  }
+  .back-link {
+    color: var(--ink-muted);
+    text-decoration: none;
+    font-size: 0.875rem;
+    font-family: var(--font-serif);
+  }
+  .back-link:hover { color: var(--terracotta); }
+
   .share-form { display: grid; gap: 1.5rem; }
   .form-row { display: grid; gap: 0.5rem; }
-  .form-row label, .form-row legend { font-weight: 600; }
-  .form-row input, .form-row textarea { font-size: 1rem; width: 100%; }
-  .radio-group { display: flex; gap: 1rem; }
-  .radio-option { display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 1rem; border: 1px solid var(--border); border-radius: 6px; cursor: pointer; }
-  .radio-option:has(input:checked) { border-color: var(--accent); background: rgba(37, 99, 235, 0.05); }
-  /* Native radio dot — undo the global `input { … }` and `.form-row input { width: 100% }` rules. */
-  .radio-option input[type="radio"] { width: auto; padding: 0; margin: 0; border: 0; background: transparent; appearance: auto; }
+  .form-row label, .form-row legend {
+    font-weight: 700;
+    color: var(--ink);
+    font-family: var(--font-sans);
+    font-size: 0.95rem;
+  }
+  .form-row input[type="text"],
+  .form-row textarea {
+    font-size: 1rem;
+    width: 100%;
+  }
+
+  .radio-group { display: flex; gap: 0.75rem; flex-wrap: wrap; }
+  .radio-option {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.55rem 1rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    background: var(--bg-elevated);
+    cursor: pointer;
+    font-weight: 500;
+  }
+  .radio-option:has(input:checked) {
+    border-color: var(--terracotta);
+    background: rgba(160, 90, 60, 0.06);
+  }
+  /* Native radio dot — undo the global input style for radios. */
+  .radio-option input[type="radio"] {
+    width: auto; padding: 0; margin: 0; border: 0;
+    background: transparent; appearance: auto;
+  }
+
+  .tag-pickers {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    margin-bottom: 0.25rem;
+  }
+  .tag-pickers .tag-selectable {
+    border: 1px solid var(--border-color);
+  }
+
   .form-error { color: #c00; font-size: 0.875rem; }
-  .form-help { color: var(--fg-muted); font-size: 0.8rem; }
-  .form-actions { display: flex; justify-content: flex-end; gap: 0.75rem; }
-  .btn { padding: 0.5rem 1.25rem; border-radius: 6px; text-decoration: none; font-size: 0.875rem; border: 1px solid transparent; cursor: pointer; }
-  .btn-primary { background: var(--accent); color: white; border-color: var(--accent); }
-  .btn-secondary { background: white; color: var(--fg); border-color: var(--border); }
-  .back-link { color: var(--fg-muted); text-decoration: none; font-size: 0.875rem; }
+  .form-help { color: var(--ink-muted); font-size: 0.8rem; }
+  .form-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.75rem;
+    margin-top: 0.5rem;
+  }
 </style>
 {% endblock %}

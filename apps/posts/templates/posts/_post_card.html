@@ -1,47 +1,95 @@
-{# Reusable post card. Used by feed and search results. #}
-<li class="post-card" data-post-id="{{ post.id }}">
+{% comment %}
+  Reusable post card. Used by feed and search results.
+
+  Layout (matches M2 prototype slide 4):
+    [▲ count]   [tag pills…]
+                Bold serif title
+                Excerpt
+                author · time · reply count
+{% endcomment %}
+<li class="post-card card" data-post-id="{{ post.id }}">
   <div class="post-card-vote">
     {% include "votes/_vote_buttons.html" with target=post target_type="post" %}
   </div>
   <div class="post-card-body">
-    <h2 class="post-card-title">
-      <a href="{% url 'posts:detail' pk=post.pk %}">{{ post.title }}</a>
-    </h2>
-    <p class="post-card-meta">
-      <span class="post-card-type post-card-type-{{ post.post_type }}">
-        {{ post.get_post_type_display }}
-      </span>
-      ·
-      by {{ post.author.nickname|default:"[deleted]" }}
-      ·
-      {{ post.created_at|date:"j M Y, H:i" }}
-      ·
-      {{ post.comment_count }} comment{{ post.comment_count|pluralize }}
-    </p>
-    <p class="post-card-excerpt">{{ post.body|truncatewords:30|linebreaksbr }}</p>
     {% if post.tags.all %}
       <p class="post-card-tags">
         {% for tag in post.tags.all %}
-          <a href="{% url 'tags:detail' slug=tag.slug %}" class="tag-pill-sm">#{{ tag.name }}</a>
+          {% if tag.slug == "worked-for-me" %}
+            <a href="{% url 'tags:detail' slug=tag.slug %}" class="tag tag-worked">{{ tag.name }}</a>
+          {% elif tag.slug == "time-management" %}
+            <a href="{% url 'tags:detail' slug=tag.slug %}" class="tag tag-time">{{ tag.name }}</a>
+          {% elif tag.slug == "focus-and-attention" or tag.slug == "focus" %}
+            <a href="{% url 'tags:detail' slug=tag.slug %}" class="tag tag-focus">{{ tag.name }}</a>
+          {% elif tag.slug == "asking-for-help" or tag.slug == "on-the-waitlist" %}
+            <a href="{% url 'tags:detail' slug=tag.slug %}" class="tag tag-asking">{{ tag.name }}</a>
+          {% else %}
+            <a href="{% url 'tags:detail' slug=tag.slug %}" class="tag">{{ tag.name }}</a>
+          {% endif %}
         {% endfor %}
+        <span class="post-card-type post-card-type-{{ post.post_type }}">{{ post.get_post_type_display }}</span>
+      </p>
+    {% else %}
+      <p class="post-card-tags">
+        <span class="post-card-type post-card-type-{{ post.post_type }}">{{ post.get_post_type_display }}</span>
       </p>
     {% endif %}
+    <h2 class="post-card-title">
+      <a href="{% url 'posts:detail' pk=post.pk %}">{{ post.title }}</a>
+    </h2>
+    <p class="post-card-excerpt">{{ post.body|truncatewords:30 }}</p>
+    <p class="post-card-meta">
+      {{ post.author.nickname|default:"[deleted]" }}
+      ·
+      {{ post.created_at|date:"j M Y" }}
+      ·
+      {{ post.comment_count }} repl{{ post.comment_count|pluralize:"y,ies" }}
+    </p>
   </div>
 </li>
 
 <style>
-  .post-card { display: flex; gap: 0.75rem; padding: 1rem; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 0.75rem; background: white; }
+  .post-card {
+    display: flex;
+    gap: 1rem;
+    padding: 1rem 1.25rem;
+    background: var(--bg-elevated);
+    transition: box-shadow 150ms ease;
+  }
   .post-card-vote { flex: 0 0 auto; }
   .post-card-body { flex: 1 1 auto; min-width: 0; }
-  .post-card-title { margin: 0 0 0.25rem; font-size: 1.05rem; }
-  .post-card-title a { color: var(--fg); text-decoration: none; }
-  .post-card-title a:hover { color: var(--accent); }
-  .post-card-meta { color: var(--fg-muted); font-size: 0.8rem; margin: 0 0 0.5rem; }
-  .post-card-type { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; padding: 0.1rem 0.4rem; border-radius: 3px; }
-  .post-card-type-problem { background: #fef3c7; color: #92400e; }
-  .post-card-type-strategy { background: #dcfce7; color: #166534; }
-  .post-card-excerpt { margin: 0; color: var(--fg); }
-  .post-card-tags { margin: 0.5rem 0 0; display: flex; flex-wrap: wrap; gap: 0.3rem; }
-  .tag-pill-sm { background: rgba(37, 99, 235, 0.08); color: var(--accent); padding: 0.1rem 0.5rem; border-radius: 999px; text-decoration: none; font-size: 0.75rem; }
-  .tag-pill-sm:hover { background: rgba(37, 99, 235, 0.15); }
+  .post-card-title {
+    margin: 0.35rem 0 0.4rem;
+    font-size: 1.1rem;
+    font-family: var(--font-serif);
+    font-weight: 700;
+    line-height: 1.25;
+  }
+  .post-card-title a {
+    color: var(--ink);
+    text-decoration: none;
+  }
+  .post-card-title a:hover { color: var(--terracotta); }
+  .post-card-tags { margin: 0; display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: center; }
+  .post-card-excerpt {
+    margin: 0 0 0.5rem;
+    color: var(--ink);
+    line-height: 1.5;
+  }
+  .post-card-meta {
+    color: var(--ink-muted);
+    font-size: 0.82rem;
+    margin: 0;
+  }
+  .post-card-type {
+    display: inline-block;
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 0.15rem 0.55rem;
+    border-radius: var(--radius-sm);
+  }
+  .post-card-type-problem { background: var(--tag-asking); color: var(--tag-asking-ink); }
+  .post-card-type-strategy { background: var(--tag-worked); color: var(--tag-worked-ink); }
 </style>

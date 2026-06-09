@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Feed — {{ PROJECT_NAME }}{% endblock %}
+{% block title %}Strategies — {{ PROJECT_NAME }}{% endblock %}
 
 {% block content %}
 <section
@@ -27,24 +27,32 @@
     if (card) card.remove();
   "
 >
+  {% if request.GET.shared %}
+    <div class="banner-success" role="status">
+      Your strategy is now live — thanks for sharing
+    </div>
+  {% endif %}
+
   <header class="feed-header">
     {% if filtered_tag %}
       <h1>#{{ filtered_tag.name }}</h1>
       <a href="{% url 'posts:feed' %}" class="filter-clear">× clear filter</a>
     {% else %}
-      <h1>Strategies and problems</h1>
+      <h1>Strategies that actually work</h1>
     {% endif %}
-    <nav class="feed-sort">
-      <a href="?sort=new" class="{% if sort == 'new' %}active{% endif %}">New</a>
-      <a href="?sort=top" class="{% if sort == 'top' %}active{% endif %}">Top</a>
-      <a href="?sort=hot" class="{% if sort == 'hot' %}active{% endif %}">Hot</a>
-    </nav>
-    <a href="{% url 'tags:list' %}" class="btn btn-secondary">Tags</a>
-    <a href="{% url 'communities:list' %}" class="btn btn-secondary">Communities</a>
-    <a href="{% url 'body_double:index' %}" class="btn btn-secondary">🤝 Body double</a>
-    <a href="{% url 'tasks:index' %}" class="btn btn-secondary">📅 Tasks</a>
-    <a href="{% url 'posts:create' %}" class="btn btn-primary">+ Share</a>
+    <a href="{% url 'posts:create' %}" class="btn btn-primary">+ Share a strategy</a>
   </header>
+
+  <nav class="filter-chips" aria-label="Filter by tag">
+    <a href="?sort=new" class="filter-chip {% if not request.GET.tag and sort == 'new' %}is-active{% endif %}">Worked for me</a>
+    <a href="?tag=asking-for-help" class="filter-chip {% if request.GET.tag == 'asking-for-help' %}is-active{% endif %}">Asking for help</a>
+    <a href="?tag=study" class="filter-chip {% if request.GET.tag == 'study' %}is-active{% endif %}">Study</a>
+    <a href="?tag=work" class="filter-chip {% if request.GET.tag == 'work' %}is-active{% endif %}">Work</a>
+    <span class="sort-spacer"></span>
+    <a href="?sort=new" class="sort-link {% if sort == 'new' %}is-active{% endif %}">New</a>
+    <a href="?sort=top" class="sort-link {% if sort == 'top' %}is-active{% endif %}">Top</a>
+    <a href="?sort=hot" class="sort-link {% if sort == 'hot' %}is-active{% endif %}">Hot</a>
+  </nav>
 
   {% if posts %}
     <ul class="post-list">
@@ -66,10 +74,10 @@
     {% endif %}
 
   {% else %}
-    <div class="empty-state">
-      <p><strong>No posts yet.</strong></p>
-      <p>Be the first — share a strategy that's helped you, or ask for advice on something you're stuck on.</p>
-      <a href="{% url 'posts:create' %}" class="btn btn-primary">+ Share the first post</a>
+    <div class="empty-state card">
+      <p><strong>No strategies yet.</strong></p>
+      <p>Be the first — share something that's helped you, or ask for advice on something you're stuck on.</p>
+      <a href="{% url 'posts:create' %}" class="btn btn-primary">+ Share the first one</a>
     </div>
   {% endif %}
 </section>
@@ -77,23 +85,82 @@
 
 {% block head_extra %}
 <style>
-  .feed-header { display: flex; align-items: baseline; gap: 1rem; margin-bottom: 1.5rem; }
-  .feed-header h1 { margin: 0; flex: 1; }
-  .feed-sort { display: flex; gap: 0.75rem; font-size: 0.875rem; }
-  .feed-sort a { color: var(--fg-muted); text-decoration: none; padding: 0.25rem 0.5rem; border-radius: 4px; }
-  .feed-sort a.active { color: var(--accent); background: rgba(37, 99, 235, 0.08); font-weight: 600; }
-  .btn { display: inline-block; padding: 0.5rem 1rem; border-radius: 6px; text-decoration: none; font-size: 0.875rem; }
-  .btn-primary { background: var(--accent); color: white; }
-  .btn-primary:hover { opacity: 0.9; }
-  .btn-secondary { background: white; color: var(--fg); border: 1px solid var(--border); }
-  .btn-secondary:hover { background: #f5f5f5; }
-  .filter-clear { color: var(--fg-muted); text-decoration: none; font-size: 0.8rem; margin-left: -0.5rem; }
-  .filter-clear:hover { color: var(--accent); }
-  .post-list { list-style: none; padding: 0; margin: 0; }
-  .empty-state { text-align: center; padding: 3rem 1rem; color: var(--fg-muted); }
-  .empty-state p:first-child { font-size: 1.125rem; color: var(--fg); margin-bottom: 0.5rem; }
+  .feed { max-width: 880px; }
+
+  .feed-header {
+    display: flex;
+    align-items: baseline;
+    gap: 1rem;
+    margin-bottom: 1rem;
+  }
+  .feed-header h1 {
+    margin: 0;
+    flex: 1;
+    font-size: 1.6rem;
+    font-family: var(--font-serif);
+  }
+  .filter-clear {
+    color: var(--ink-muted);
+    text-decoration: none;
+    font-size: 0.85rem;
+  }
+  .filter-clear:hover { color: var(--terracotta); }
+
+  .filter-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-bottom: 1.25rem;
+    align-items: center;
+  }
+  .filter-chip {
+    display: inline-block;
+    padding: 0.35rem 0.9rem;
+    border-radius: var(--radius-pill);
+    background: var(--bg-elevated);
+    color: var(--ink-muted);
+    text-decoration: none;
+    font-size: 0.85rem;
+    font-weight: 500;
+    border: 1px solid var(--border-color);
+  }
+  .filter-chip:hover { background: var(--bg-sunk); color: var(--ink); }
+  .filter-chip.is-active {
+    background: var(--tag-worked);
+    color: var(--tag-worked-ink);
+    border-color: transparent;
+  }
+  .sort-spacer { flex: 1; }
+  .sort-link {
+    color: var(--ink-muted);
+    text-decoration: none;
+    padding: 0.25rem 0.5rem;
+    font-size: 0.85rem;
+  }
+  .sort-link.is-active { color: var(--terracotta); font-weight: 600; }
+
+  .post-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.75rem; }
+
+  .empty-state {
+    text-align: center;
+    padding: 3rem 1rem;
+    color: var(--ink-muted);
+  }
+  .empty-state p:first-child {
+    font-size: 1.125rem;
+    color: var(--ink);
+    margin-bottom: 0.5rem;
+  }
   .empty-state .btn { margin-top: 1rem; }
-  .pagination { display: flex; align-items: center; justify-content: space-between; margin-top: 2rem; font-size: 0.875rem; color: var(--fg-muted); }
-  .pagination a { color: var(--accent); text-decoration: none; }
+
+  .pagination {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 2rem;
+    font-size: 0.85rem;
+    color: var(--ink-muted);
+  }
+  .pagination a { color: var(--terracotta); text-decoration: none; }
 </style>
 {% endblock %}
