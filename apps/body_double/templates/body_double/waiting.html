@@ -5,7 +5,7 @@
 {% block content %}
 <section
   class="body-double-waiting"
-  x-data="waitingPage({{ wait_timeout_s }}, {{ request.user.id }}, '{% url 'body_double:status' %}')"
+  x-data="{ timedOut: false }"
   x-on:ws:match_found.window="
     /* Fast path: server pushed a match event. Redirect immediately. */
     if ($event.detail && $event.detail.room_url) {
@@ -16,7 +16,7 @@
   <h1>Looking for a body double…</h1>
 
   <p class="elapsed">
-    Waited <span x-text="elapsed"></span> second<span x-show="elapsed !== 1">s</span>
+    Waited <span id="wait-counter">0</span> second<span id="wait-counter-s">s</span>
     <span x-show="!timedOut" class="muted">— hang tight.</span>
   </p>
 
@@ -35,61 +35,80 @@
 </section>
 
 <script>
-  /* Defined as a named x-data factory so the timer + WS + poll all live
-     inside `init()` with `this.` references. The previous shape
-     (multi-statement x-init with bare `elapsed++`) relied on `with()`
-     scope binding propagating into the setInterval callback, which is
-     fragile in Alpine 3 — the counter would never re-render even though
-     it was incrementing internally. Using `this.elapsed++` is the
-     idiomatic Alpine 3 reactive write. */
-  function waitingPage(waitTimeoutS, userId, statusUrl) {
-    return {
-      elapsed: 0,
-      timedOut: false,
-      init() {
-        // Open the shared WebSocket via the same store used by the feed
-        // and post pages. Auto-reconnects with exponential backoff if
-        // the WS drops mid-wait.
-        this.$store.ws.connect("/ws/matchmaking/" + userId + "/");
+  /* Belt-and-braces timer. Earlier Alpine-only approaches (bare `elapsed++`
+     in x-init, and the named factory with `this.elapsed += 1`) both failed
+     to re-render the displayed count for reasons that come down to
+     Alpine 3 reactivity edge cases inside setInterval closures. This
+     version sidesteps reactivity for the counter — it grabs the DOM node
+     directly and mutates its textContent — so the visible number ticks
+     regardless of how Alpine treats the scope. Alpine reactivity is still
+     used for the `timedOut` switch (drives x-show on the "Try again" UI),
+     but that fires at most once, where the reactivity issue isn't a problem. */
+  (function () {
+    const WAIT_TIMEOUT_S = {{ wait_timeout_s }};
+    const USER_ID = {{ request.user.id }};
+    const STATUS_URL = "{% url 'body_double:status' %}";
 
-        // Elapsed-time counter, ticking every second.
-        setInterval(() => {
-          this.elapsed += 1;
-          if (this.elapsed >= waitTimeoutS) this.timedOut = true;
-        }, 1000);
+    function start() {
+      const counter = document.getElementById("wait-counter");
+      const plural = document.getElementById("wait-counter-s");
+      const section = document.querySelector(".body-double-waiting");
+      let elapsed = 0;
 
-        // Polling fallback. If the WS misses the match_found event for
-        // any reason (race during initial connect, transient
-        // disconnect, etc.), this catches it within 5 seconds. The WS
-        // path is faster (<100 ms) but this guarantees we don't strand
-        // the user.
-        setInterval(async () => {
-          try {
-            const r = await fetch(statusUrl, {
-              headers: { Accept: "application/json" },
-              credentials: "same-origin",
-            });
-            if (!r.ok) return;
-            const data = await r.json();
-            if (data.matched && data.room_url) {
-              window.location.href = data.room_url;
-            }
-          } catch {
-            /* network blip — try again on the next tick */
+      /* Open the matchmaking WebSocket via the shared store. */
+      if (window.Alpine && Alpine.store("ws")) {
+        Alpine.store("ws").connect("/ws/matchmaking/" + USER_ID + "/");
+      }
+
+      setInterval(function () {
+        elapsed += 1;
+        if (counter) counter.textContent = elapsed;
+        if (plural) plural.style.display = elapsed === 1 ? "none" : "";
+        if (elapsed >= WAIT_TIMEOUT_S && section && section._x_dataStack) {
+          /* Flip the Alpine reactive `timedOut` flag via the data stack. */
+          section._x_dataStack[0].timedOut = true;
+        }
+      }, 1000);
+
+      /* Polling fallback. If the WS misses the match_found event for any
+         reason (race during initial connect, transient disconnect), this
+         catches it within 5 seconds. The WS path is faster (<100 ms) but
+         this guarantees we don't strand the user. */
+      setInterval(async function () {
+        try {
+          const r = await fetch(STATUS_URL, {
+            headers: { Accept: "application/json" },
+            credentials: "same-origin",
+          });
+          if (!r.ok) return;
+          const data = await r.json();
+          if (data.matched && data.room_url) {
+            window.location.href = data.room_url;
           }
-        }, 5000);
-      },
-    };
-  }
+        } catch (e) {
+          /* network blip — try again on the next tick */
+        }
+      }, 5000);
+    }
+
+    /* Wait for Alpine to have booted (so the store + section's _x_dataStack
+       are wired) before starting. If Alpine never boots for some reason,
+       fall back to a plain start after 500 ms so the counter still ticks. */
+    document.addEventListener("alpine:initialized", start);
+    setTimeout(function () {
+      if (!document.getElementById("wait-counter") || document.getElementById("wait-counter").textContent !== "0") return;
+      start();
+    }, 500);
+  })();
 </script>
 
 <style>
   [x-cloak] { display: none !important; }
   .body-double-waiting { max-width: 480px; margin: 0 auto; text-align: center; padding: 3rem 0; }
-  .body-double-waiting h1 { font-size: 1.5rem; margin-bottom: 1.5rem; }
+  .body-double-waiting h1 { font-size: 1.5rem; margin-bottom: 1.5rem; font-family: var(--font-serif); }
   .elapsed { font-size: 1.1rem; color: var(--fg); }
   .muted { color: var(--fg-muted); }
-  .timed-out { margin: 2rem 0; padding: 1rem; background: #fef3c7; border-radius: 8px; }
+  .timed-out { margin: 2rem 0; padding: 1rem; background: var(--tag-asking, #fef3c7); border-radius: 8px; }
   .cancel-form { margin-top: 2rem; }
 </style>
 {% endblock %}
