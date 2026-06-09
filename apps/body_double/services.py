@@ -55,11 +55,28 @@ def _video_provider() -> VideoProvider:
 
 
 @transaction.atomic
-def enqueue(*, user, community=None) -> tuple[PoolTicket, BodyDoubleSession | None]:  # type: ignore[no-untyped-def]
-    """Add `user` to the matchmaking pool, optionally scoped to `community`.
+def enqueue(  # type: ignore[no-untyped-def]
+    *,
+    user,
+    community=None,
+    duration_minutes: int = 30,
+    chattiness: str = PoolTicket.CHATTINESS_FLEXIBLE,
+    work_mode: str = PoolTicket.WORK_MODE_ANY,
+) -> tuple[PoolTicket, BodyDoubleSession | None]:
+    """Add `user` to the matchmaking pool with their stated preferences.
+
+    Args:
+      user — the requesting user.
+      community — optional Community scope (matcher prefers same community).
+      duration_minutes — 15/30/45/60/90; how long they expect to work.
+      chattiness — "chatty" / "quiet" / "flexible". Hard rule in matcher:
+        chatty × quiet never pair.
+      work_mode — "deep_focus" / "busywork" / "admin" / "any". Soft pref.
 
     Returns `(ticket, session)` where `session` is non-None if a match
-    happened immediately (i.e. another user was already waiting).
+    happened immediately. The session's `agreed_duration_minutes` is
+    populated with `min(my_duration, partner_duration)` so both leave
+    when the shorter user is done.
 
     Side effects on immediate match:
       - both tickets transition WAITING → MATCHED
@@ -74,6 +91,9 @@ def enqueue(*, user, community=None) -> tuple[PoolTicket, BodyDoubleSession | No
         ticket = PoolTicket.objects.create(
             user=user,
             community=community,
+            duration_minutes=duration_minutes,
+            chattiness=chattiness,
+            work_mode=work_mode,
             status=PoolTicket.STATUS_WAITING,
         )
     except IntegrityError as exc:
@@ -87,11 +107,18 @@ def enqueue(*, user, community=None) -> tuple[PoolTicket, BodyDoubleSession | No
     room_id = uuid4().hex
     _video_provider().create_room(room_id=room_id, max_participants=2)
 
+    # Agreed duration = MIN of the two declared durations. Both leave when
+    # the shorter user is done. Falls back to the requester's duration if
+    # the partner row is missing it (legacy data).
+    partner_duration = partner.duration_minutes or duration_minutes
+    agreed = min(duration_minutes, partner_duration)
+
     session = BodyDoubleSession.objects.create(
         room_id=room_id,
         user_a=partner.user,  # whoever was waiting first
         user_b=user,
         status=BodyDoubleSession.STATUS_ACTIVE,
+        agreed_duration_minutes=agreed,
     )
 
     # Both tickets transition to MATCHED with backrefs.

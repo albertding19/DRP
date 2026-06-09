@@ -128,6 +128,49 @@ class TestFindView:
         ticket = PoolTicket.objects.get(user=user)
         assert ticket.community_id is None
 
+    def test_find_reads_preference_form_fields(self) -> None:
+        client, user = _authed_client("findprefs")
+        response = client.post(
+            "/body-double/find/",
+            {
+                "duration_minutes": "45",
+                "chattiness": "quiet",
+                "work_mode": "deep_focus",
+            },
+        )
+        assert response.status_code == 302
+        ticket = PoolTicket.objects.get(user=user)
+        assert ticket.duration_minutes == 45
+        assert ticket.chattiness == "quiet"
+        assert ticket.work_mode == "deep_focus"
+
+    def test_find_uses_defaults_when_fields_missing(self) -> None:
+        client, user = _authed_client("finddefaults")
+        response = client.post("/body-double/find/", {})
+        assert response.status_code == 302
+        ticket = PoolTicket.objects.get(user=user)
+        assert ticket.duration_minutes == 30
+        assert ticket.chattiness == "flexible"
+        assert ticket.work_mode == "any"
+
+    def test_find_coerces_invalid_inputs_to_defaults(self) -> None:
+        # 22 isn't a valid bucket; gibberish strings aren't valid choices.
+        # Service should silently coerce, NOT 400 the user.
+        client, user = _authed_client("findinvalid")
+        response = client.post(
+            "/body-double/find/",
+            {
+                "duration_minutes": "22",
+                "chattiness": "screaming",
+                "work_mode": "rocket-science",
+            },
+        )
+        assert response.status_code == 302
+        ticket = PoolTicket.objects.get(user=user)
+        assert ticket.duration_minutes == 30
+        assert ticket.chattiness == "flexible"
+        assert ticket.work_mode == "any"
+
 
 @pytest.mark.django_db(transaction=True)
 class TestWaitingView:

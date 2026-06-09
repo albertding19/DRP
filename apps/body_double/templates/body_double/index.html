@@ -3,48 +3,71 @@
 {% block title %}Find a body double — {{ PROJECT_NAME }}{% endblock %}
 
 {% block content %}
-<section class="body-double-landing">
-  <h1>🤝 Find a body double</h1>
+<section class="body-double-landing prose">
+  <h1>Find a body double</h1>
 
   <p class="lead">
-    Body doubling is working alongside another person — even silently — to
-    help your brain focus. Click below to be matched with someone for a
-    quick video session.
+    Working alongside another person — even silently — helps your brain
+    focus. Tell us what you need today and we'll match you with someone
+    who wants the same kind of session.
   </p>
 
-  <form method="post" action="{% url 'body_double:find' %}" class="primary-cta">
+  <form method="post" action="{% url 'body_double:find' %}" class="needs-form">
     {% csrf_token %}
-    <button type="submit" class="btn btn-primary btn-lg">
-      Find me anyone
-    </button>
-    <small class="cta-hint">Matches you with anyone in the pool.</small>
+
+    <fieldset class="needs-row">
+      <legend>How long are you here for?</legend>
+      <div class="pill-group" role="radiogroup">
+        <label class="pill"><input type="radio" name="duration_minutes" value="15"> 15 min</label>
+        <label class="pill"><input type="radio" name="duration_minutes" value="30" checked> 30 min</label>
+        <label class="pill"><input type="radio" name="duration_minutes" value="45"> 45 min</label>
+        <label class="pill"><input type="radio" name="duration_minutes" value="60"> 60 min</label>
+        <label class="pill"><input type="radio" name="duration_minutes" value="90"> 90 min</label>
+      </div>
+      <small class="row-hint">We'll match you with someone here for roughly the same time so you both leave together.</small>
+    </fieldset>
+
+    <fieldset class="needs-row">
+      <legend>How chatty?</legend>
+      <div class="pill-group" role="radiogroup">
+        <label class="pill"><input type="radio" name="chattiness" value="chatty"> 🗣 Chatty</label>
+        <label class="pill"><input type="radio" name="chattiness" value="quiet"> 🤫 Quiet</label>
+        <label class="pill"><input type="radio" name="chattiness" value="flexible" checked> 🌿 Flexible</label>
+      </div>
+      <small class="row-hint">We'll never match a chatty person with a quiet one — pick flexible if you don't mind.</small>
+    </fieldset>
+
+    <fieldset class="needs-row">
+      <legend>What kind of work?</legend>
+      <div class="pill-group" role="radiogroup">
+        <label class="pill"><input type="radio" name="work_mode" value="deep_focus"> Deep focus</label>
+        <label class="pill"><input type="radio" name="work_mode" value="busywork"> Busywork</label>
+        <label class="pill"><input type="radio" name="work_mode" value="admin"> Admin / email</label>
+        <label class="pill"><input type="radio" name="work_mode" value="any" checked> Any</label>
+      </div>
+      <small class="row-hint">Helps you pair with someone in a similar mode. We'll loosen this after a minute if no one fits.</small>
+    </fieldset>
+
+    {% if user_communities %}
+      <fieldset class="needs-row">
+        <legend>Community <small class="legend-meta">(optional)</small></legend>
+        <select name="community" class="community-select">
+          <option value="">— any —</option>
+          {% for community in user_communities %}
+            <option value="{{ community.slug }}">{{ community.name }} ({{ community.member_count }})</option>
+          {% endfor %}
+        </select>
+        <small class="row-hint">Prefer matching with someone from this group. We'll widen the search if no one's around.</small>
+      </fieldset>
+    {% endif %}
+
+    <div class="needs-actions">
+      <button type="submit" class="btn btn-primary btn-lg">Find me a body double</button>
+    </div>
   </form>
 
-  {% if user_communities %}
-    <div class="community-ctas">
-      <h2>Or match in one of your communities</h2>
-      <ul class="community-cta-list">
-        {% for community in user_communities %}
-          <li>
-            <form method="post" action="{% url 'body_double:find' %}">
-              {% csrf_token %}
-              <input type="hidden" name="community" value="{{ community.slug }}">
-              <button type="submit" class="btn btn-secondary">
-                Find in <strong>{{ community.name }}</strong>
-                <span class="member-count">({{ community.member_count }} member{{ community.member_count|pluralize }})</span>
-              </button>
-            </form>
-          </li>
-        {% endfor %}
-      </ul>
-      <p class="community-help">
-        <small>
-          If no one's in your community, we'll find you a partner from anywhere after 60s.
-        </small>
-      </p>
-    </div>
-  {% else %}
-    <p class="community-help">
+  {% if not user_communities %}
+    <p class="community-suggestion">
       <small>
         <a href="{% url 'communities:list' %}">Browse communities</a> or
         <a href="{% url 'communities:create' %}">create your own</a> to match
@@ -56,33 +79,125 @@
   <details class="how-it-works">
     <summary>How it works</summary>
     <ol>
-      <li>You join a pool of people looking for a body double.</li>
-      <li>The next person to join the pool is paired with you.</li>
-      <li>You both get dropped into a 2-person video room.</li>
+      <li>You tell us what you need today.</li>
+      <li>We look for someone wanting the same kind of session.</li>
+      <li>You both get dropped into a 2-person video call.</li>
       <li>Work together for as long as feels useful. Either of you can end the session at any time.</li>
     </ol>
     <p class="small">No real names. No recording. Just your nickname and a video call.</p>
   </details>
 </section>
+{% endblock %}
 
+{% block head_extra %}
 <style>
-  .body-double-landing { max-width: 560px; margin: 0 auto; text-align: center; padding: 2rem 0; }
-  .body-double-landing h1 { font-size: 2rem; margin: 0 0 1rem; }
-  .body-double-landing .lead { font-size: 1.1rem; color: var(--fg); margin-bottom: 2rem; line-height: 1.5; }
-  .primary-cta { margin-bottom: 1rem; }
-  .btn-lg { font-size: 1.1rem; padding: 0.85rem 2rem; }
-  .cta-hint { display: block; color: var(--fg-muted); margin-top: 0.5rem; font-size: 0.85rem; }
-  .community-ctas { margin: 2.5rem 0; text-align: left; }
-  .community-ctas h2 { font-size: 1rem; color: var(--fg-muted); text-align: center; margin-bottom: 0.75rem; font-weight: 500; }
-  .community-cta-list { padding: 0; list-style: none; display: grid; gap: 0.5rem; }
-  .community-cta-list button { width: 100%; text-align: left; padding: 0.65rem 1rem; }
-  .community-cta-list .member-count { color: var(--fg-muted); font-weight: 400; font-size: 0.85rem; margin-left: 0.5rem; }
-  .community-help { color: var(--fg-muted); text-align: center; margin: 1rem 0; }
-  .community-help a { color: var(--accent); }
-  .how-it-works { margin-top: 3rem; text-align: left; background: white; border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.25rem; }
-  .how-it-works summary { cursor: pointer; font-weight: 600; }
+  .body-double-landing { padding-top: 0.5rem; }
+  .body-double-landing h1 {
+    font-family: var(--font-serif);
+    font-size: 2rem;
+    margin: 0 0 0.5rem;
+  }
+  .body-double-landing .lead {
+    color: var(--ink-muted);
+    margin: 0 0 2rem;
+    line-height: 1.5;
+  }
+
+  .needs-form {
+    display: grid;
+    gap: 1.5rem;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: 1.5rem;
+  }
+  .needs-row { border: 0; padding: 0; margin: 0; }
+  .needs-row legend {
+    font-family: var(--font-serif);
+    font-size: 1.05rem;
+    font-weight: 700;
+    margin-bottom: 0.6rem;
+    padding: 0;
+    color: var(--ink);
+  }
+  .needs-row .legend-meta {
+    font-family: var(--font-sans);
+    font-weight: 400;
+    color: var(--ink-muted);
+  }
+
+  .pill-group {
+    display: flex;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+  }
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.45rem 0.95rem;
+    border-radius: var(--radius-pill);
+    background: var(--bg);
+    color: var(--ink-muted);
+    font-weight: 600;
+    font-size: 0.9rem;
+    cursor: pointer;
+    user-select: none;
+    border: 1px solid var(--border-color);
+    transition: background 100ms ease, color 100ms ease;
+  }
+  .pill input { display: none; }
+  .pill:hover { background: var(--bg-sunk); color: var(--ink); }
+  .pill:has(input:checked) {
+    background: var(--tag-worked);
+    color: var(--tag-worked-ink);
+    border-color: transparent;
+  }
+
+  .community-select {
+    font-size: 0.95rem;
+    padding: 0.55rem 0.85rem;
+    width: 100%;
+    max-width: 360px;
+  }
+
+  .row-hint {
+    display: block;
+    color: var(--ink-muted);
+    margin-top: 0.5rem;
+    font-size: 0.82rem;
+    line-height: 1.4;
+  }
+
+  .needs-actions {
+    text-align: center;
+    margin-top: 0.25rem;
+  }
+  .btn-lg {
+    font-size: 1.05rem;
+    padding: 0.85rem 2rem;
+  }
+
+  .community-suggestion {
+    color: var(--ink-muted);
+    text-align: center;
+    margin: 1.5rem 0;
+  }
+  .community-suggestion a { color: var(--terracotta); }
+
+  .how-it-works {
+    margin-top: 2.5rem;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: 1rem 1.25rem;
+  }
+  .how-it-works summary {
+    cursor: pointer;
+    font-weight: 600;
+    font-family: var(--font-serif);
+  }
   .how-it-works ol { padding-left: 1.25rem; }
   .how-it-works li { margin: 0.4rem 0; }
-  .how-it-works .small { font-size: 0.85rem; color: var(--fg-muted); margin-top: 1rem; }
+  .how-it-works .small { font-size: 0.85rem; color: var(--ink-muted); margin-top: 1rem; }
 </style>
 {% endblock %}

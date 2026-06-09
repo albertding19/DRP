@@ -189,18 +189,33 @@ MODERATION_CLAUDE_TIMEOUT_S = env.float("MODERATION_CLAUDE_TIMEOUT_S", default=3
 # ---------------------------------------------------------------------------
 # Body-double matchmaking
 # ---------------------------------------------------------------------------
-# Pluggable matching strategy. The default is first-in-first-out pairing.
-# Future variants (tag-filtered, blocklist-aware, Pomodoro-length) implement
-# `apps.body_double.matching.base.MatchingStrategy` and are selected by
-# setting this env var to a different dotted path.
+# Pluggable matching strategy. Default is the preference-aware matcher
+# that respects each ticket's chattiness / work_mode / duration prefs.
+# Alternatives (set the env to one of these dotted paths to swap):
+#   apps.body_double.matching.community.CommunityFallbackStrategy
+#       — the previous default; community-aware but ignores prefs.
+#   apps.body_double.matching.fifo.FIFOStrategy
+#       — pure first-in-first-out; ignores everything but wait time.
 BODY_DOUBLE_MATCHING_STRATEGY = env(
     "BODY_DOUBLE_MATCHING_STRATEGY",
-    default="apps.body_double.matching.community.CommunityFallbackStrategy",
+    default="apps.body_double.matching.preferences.PreferenceMatchingStrategy",
 )
 
-# How long (seconds) a waiting community-scoped ticket must sit alone in
-# its community before the matching strategy will pair it with anyone.
+# Phase progression for PreferenceMatchingStrategy. Each is the partner-
+# wait threshold at which the matcher will start considering a less-
+# good fit. Phase 1 (0s) requires the perfect fit; subsequent phases
+# loosen one constraint at a time so a niche-preference user is never
+# stranded.
+#
+#   STRICT_S      (0–N)  — same community + work_mode-compat + ±15min
+#   FALLBACK_S    (N–N)  — same community + work_mode-compat + ±30min
+#   LOOSE_S       (N–N)  — any community  + work_mode-compat + ±30min
+#   (after LOOSE_S)      — any community  + any work_mode    + any duration
+# Chattiness compatibility is NEVER loosened — chatty × quiet stays
+# blocked at every phase. Vibe mismatch is worse than waiting longer.
+BODY_DOUBLE_STRICT_S = env.int("BODY_DOUBLE_STRICT_S", default=30)
 BODY_DOUBLE_FALLBACK_S = env.int("BODY_DOUBLE_FALLBACK_S", default=60)
+BODY_DOUBLE_LOOSE_S = env.int("BODY_DOUBLE_LOOSE_S", default=120)
 
 # Pluggable video provider. Same shape as the matching strategy.
 BODY_DOUBLE_VIDEO_PROVIDER = env(

@@ -56,6 +56,18 @@ class BodyDoubleSession(TimeStampedModel):
     started_at = models.DateTimeField(auto_now_add=True)
     ended_at = models.DateTimeField(null=True, blank=True)
 
+    # Min of the two paired tickets' duration_minutes at match time. Shown
+    # as a static label in the room — no countdown, no auto-end. Nullable
+    # for legacy sessions that pre-date the preference-matching feature.
+    agreed_duration_minutes = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        help_text=(
+            "Min of the two tickets' duration_minutes at match time. "
+            "Shown as a static label in the room — no auto-end."
+        ),
+    )
+
     class Meta:
         ordering = ["-started_at"]
         indexes = [
@@ -93,6 +105,39 @@ class PoolTicket(TimeStampedModel):
     # cancelled tickets are terminal — the user may enqueue again.
     ACTIVE_STATUSES = (STATUS_WAITING, STATUS_MATCHED)
 
+    # ---- Preference choices (per-session, re-entered each time) ----
+    # These are the user's stated needs for THIS particular call. They
+    # live on the ticket (not the User) so each queue-up is a fresh
+    # declaration of what they want right now.
+
+    DURATION_CHOICES = [
+        (15, "15 min"),
+        (30, "30 min"),
+        (45, "45 min"),
+        (60, "60 min"),
+        (90, "90 min"),
+    ]
+
+    CHATTINESS_CHATTY = "chatty"
+    CHATTINESS_QUIET = "quiet"
+    CHATTINESS_FLEXIBLE = "flexible"
+    CHATTINESS_CHOICES = [
+        (CHATTINESS_CHATTY, "Chatty — happy to talk between focus"),
+        (CHATTINESS_QUIET, "Quiet — silent focus"),
+        (CHATTINESS_FLEXIBLE, "Flexible — either's fine"),
+    ]
+
+    WORK_MODE_DEEP = "deep_focus"
+    WORK_MODE_BUSYWORK = "busywork"
+    WORK_MODE_ADMIN = "admin"
+    WORK_MODE_ANY = "any"
+    WORK_MODE_CHOICES = [
+        (WORK_MODE_DEEP, "Deep focus"),
+        (WORK_MODE_BUSYWORK, "Busywork"),
+        (WORK_MODE_ADMIN, "Admin / email"),
+        (WORK_MODE_ANY, "Any"),
+    ]
+
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
@@ -109,6 +154,39 @@ class PoolTicket(TimeStampedModel):
         blank=True,
         related_name="pool_tickets",
     )
+
+    # How long the user expects to work for. The matcher prefers nearby
+    # durations so both participants leave the call at roughly the same
+    # time. The SESSION row records the MIN of the two paired tickets'
+    # durations as the "agreed" length — shown as a static label, no
+    # countdown, no auto-end.
+    duration_minutes = models.PositiveSmallIntegerField(
+        choices=DURATION_CHOICES,
+        default=30,
+        help_text="Expected session length. Matcher prefers nearby durations.",
+    )
+
+    # Chattiness is the ONE preference the matcher treats as a hard rule:
+    # chatty × quiet is NEVER paired, regardless of how long either has
+    # waited. Mismatched vibes are worse than waiting longer. Flexible
+    # users pair with anyone — that's the "I don't mind" path.
+    chattiness = models.CharField(
+        max_length=10,
+        choices=CHATTINESS_CHOICES,
+        default=CHATTINESS_FLEXIBLE,
+        help_text="Conversational preference. Hard compat rule in the matcher.",
+    )
+
+    # Work mode is a SOFT preference. Strategy starts strict (only same
+    # work_mode or 'any' pair) then loosens after BODY_DOUBLE_FALLBACK_S
+    # so a niche-mode user isn't stranded forever.
+    work_mode = models.CharField(
+        max_length=15,
+        choices=WORK_MODE_CHOICES,
+        default=WORK_MODE_ANY,
+        help_text="What you're working on. Soft preference; loosens over time.",
+    )
+
     status = models.CharField(
         max_length=10, choices=STATUS_CHOICES, default=STATUS_WAITING, db_index=True
     )

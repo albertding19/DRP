@@ -15,6 +15,20 @@
 >
   <h1>Looking for a body double…</h1>
 
+  {% if ticket %}
+    <p class="needs-summary">
+      Someone
+      {% if ticket.chattiness == "chatty" %}<strong>chatty</strong>
+      {% elif ticket.chattiness == "quiet" %}<strong>quiet</strong>
+      {% else %}<strong>chatty or quiet</strong>
+      {% endif %},
+      for <strong>{{ ticket.duration_minutes }} min</strong>
+      {% if ticket.work_mode == "deep_focus" %}, deep focus{% endif %}
+      {% if ticket.work_mode == "busywork" %}, busywork{% endif %}
+      {% if ticket.work_mode == "admin" %}, admin{% endif %}.
+    </p>
+  {% endif %}
+
   <p class="elapsed">
     Waited <span id="wait-counter">0</span> second<span id="wait-counter-s">s</span>
     <span x-show="!timedOut" class="muted">— hang tight.</span>
@@ -107,6 +121,14 @@
   .body-double-waiting { max-width: 480px; margin: 0 auto; text-align: center; padding: 3rem 0; }
   .body-double-waiting h1 { font-size: 1.5rem; margin-bottom: 1.5rem; font-family: var(--font-serif); }
   .elapsed { font-size: 1.1rem; color: var(--fg); }
+  .needs-summary {
+    color: var(--ink-muted, var(--fg-muted));
+    font-size: 0.95rem;
+    margin: 0.25rem auto 1rem;
+    max-width: 360px;
+    line-height: 1.4;
+  }
+  .needs-summary strong { color: var(--ink, var(--fg)); }
   .muted { color: var(--fg-muted); }
   .timed-out { margin: 2rem 0; padding: 1rem; background: var(--tag-asking, #fef3c7); border-radius: 8px; }
   .cancel-form { margin-top: 2rem; }

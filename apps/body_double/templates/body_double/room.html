@@ -8,7 +8,16 @@
     <h1>Body double session</h1>
     <p class="room-meta">
       with <strong>{% if session.user_a_id == request.user.id %}{{ session.user_b.nickname }}{% else %}{{ session.user_a.nickname }}{% endif %}</strong>
+      {% if session.agreed_duration_minutes %}
+        · agreed for <strong>{{ session.agreed_duration_minutes }} min</strong>
+      {% endif %}
     </p>
+    {% if session.agreed_duration_minutes %}
+      <p class="room-soft-note">
+        That's a soft commitment — there's no timer, no nudge.
+        Either of you can end whenever you need to.
+      </p>
+    {% endif %}
   </header>
 
   <div class="room-layout" :class="chatOpen ? 'with-chat' : 'no-chat'">
@@ -264,9 +273,10 @@
 <style>
   [x-cloak] { display: none !important; }
   .body-double-room { max-width: 1200px; margin: 0 auto; padding: 1rem 0; }
-  .room-header { display: flex; align-items: baseline; gap: 1rem; margin-bottom: 1.25rem; }
-  .room-header h1 { margin: 0; font-size: 1.5rem; }
+  .room-header { display: flex; flex-direction: column; gap: 0.2rem; margin-bottom: 1.25rem; }
+  .room-header h1 { margin: 0; font-size: 1.5rem; font-family: var(--font-serif, inherit); }
   .room-meta { color: var(--fg-muted); margin: 0; }
+  .room-soft-note { color: var(--fg-muted); margin: 0; font-size: 0.82rem; font-style: italic; }
 
   /* Main layout: video on the left, chat on the right. Collapses to a
      single column below ~860px. */

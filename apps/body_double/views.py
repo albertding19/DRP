@@ -64,20 +64,46 @@ def index(request: HttpRequest) -> HttpResponse:
     )
 
 
+_VALID_DURATIONS = {15, 30, 45, 60, 90}
+_VALID_CHATTINESS = {c[0] for c in PoolTicket.CHATTINESS_CHOICES}
+_VALID_WORK_MODES = {c[0] for c in PoolTicket.WORK_MODE_CHOICES}
+
+
 @login_required
 @require_POST
 def find(request: HttpRequest) -> HttpResponse:
-    """Enqueue the requesting user. Three outcomes:
+    """Enqueue the requesting user with their per-session preferences.
 
-    - matched immediately → redirect to room
-    - waiting in pool     → redirect to waiting
-    - already enqueued    → redirect to whichever page reflects state
+    POST fields (all optional, defaults applied if missing or invalid):
+      duration_minutes — one of 15/30/45/60/90 (default 30)
+      chattiness       — chatty / quiet / flexible (default flexible)
+      work_mode        — deep_focus / busywork / admin / any (default any)
+      community        — slug of a Community (default no community pref)
 
-    Optional `community` POST param: if present and a valid slug, scopes
-    the matchmaking to that community (unknown slugs are silently
-    treated as "no community preference" — the strategy then falls back
-    to general FIFO).
+    Three outcomes:
+      - matched immediately → redirect to room
+      - waiting in pool     → redirect to waiting
+      - already enqueued    → redirect to landing (which re-routes)
     """
+    # --- Coerce + validate the preference inputs.
+    # Silent fallback to defaults on invalid input — a user with broken
+    # JS or a tampered form shouldn't get a 400, they should just get
+    # the most permissive defaults and a usable match.
+    try:
+        duration = int(request.POST.get("duration_minutes") or 30)
+    except (TypeError, ValueError):
+        duration = 30
+    if duration not in _VALID_DURATIONS:
+        duration = 30
+
+    chattiness = (request.POST.get("chattiness") or "").strip()
+    if chattiness not in _VALID_CHATTINESS:
+        chattiness = PoolTicket.CHATTINESS_FLEXIBLE
+
+    work_mode = (request.POST.get("work_mode") or "").strip()
+    if work_mode not in _VALID_WORK_MODES:
+        work_mode = PoolTicket.WORK_MODE_ANY
+
     community = None
     slug = (request.POST.get("community") or "").strip()
     if slug:
@@ -87,7 +113,13 @@ def find(request: HttpRequest) -> HttpResponse:
         community = Community.objects.filter(slug=slug).first()
 
     try:
-        _, session = enqueue(user=request.user, community=community)
+        _, session = enqueue(
+            user=request.user,
+            community=community,
+            duration_minutes=duration,
+            chattiness=chattiness,
+            work_mode=work_mode,
+        )
     except AlreadyInPoolError:
         # User already had an active ticket — route them to the right
         # page based on its current status.

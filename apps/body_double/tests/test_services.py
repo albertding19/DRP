@@ -106,6 +106,36 @@ class TestEnqueue:
         with pytest.raises(AlreadyInPoolError):
             enqueue(user=alice)
 
+    def test_enqueue_persists_preference_fields(self) -> None:
+        alice = _user("alice_prefs")
+        ticket, _ = enqueue(
+            user=alice,
+            duration_minutes=45,
+            chattiness=PoolTicket.CHATTINESS_QUIET,
+            work_mode=PoolTicket.WORK_MODE_DEEP,
+        )
+        assert ticket.duration_minutes == 45
+        assert ticket.chattiness == PoolTicket.CHATTINESS_QUIET
+        assert ticket.work_mode == PoolTicket.WORK_MODE_DEEP
+
+    def test_agreed_duration_is_min_of_two(self, _mock_broadcast) -> None:
+        # First user wants 45, second wants 30 → session agrees to 30
+        # (both leave when the shorter user is done).
+        alice = _user("alice_dur45")
+        bob = _user("bob_dur30")
+        enqueue(user=alice, duration_minutes=45)
+        _, session = enqueue(user=bob, duration_minutes=30)
+        assert session is not None
+        assert session.agreed_duration_minutes == 30
+
+    def test_agreed_duration_equal_durations(self, _mock_broadcast) -> None:
+        alice = _user("alice_eq")
+        bob = _user("bob_eq")
+        enqueue(user=alice, duration_minutes=60)
+        _, session = enqueue(user=bob, duration_minutes=60)
+        assert session is not None
+        assert session.agreed_duration_minutes == 60
+
     def test_re_enqueue_after_cancel_allowed(self) -> None:
         alice = _user("alice_retry")
         enqueue(user=alice)
