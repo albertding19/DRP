@@ -66,9 +66,7 @@ class ResendHTTPEmailBackend(BaseEmailBackend):
             if msg.bcc:
                 payload["bcc"] = list(msg.bcc)
             try:
-                resp = requests.post(
-                    _API_URL, json=payload, headers=headers, timeout=_TIMEOUT_S
-                )
+                resp = requests.post(_API_URL, json=payload, headers=headers, timeout=_TIMEOUT_S)
                 resp.raise_for_status()
                 sent += 1
             except Exception as exc:
