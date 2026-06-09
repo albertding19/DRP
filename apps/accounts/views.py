@@ -194,9 +194,7 @@ def check_email_poll(request: HttpRequest) -> JsonResponse:
         return JsonResponse({"signed_in": False})
 
     try:
-        token = SignInToken.objects.get(
-            pk=pending_id, intent=SignInToken.INTENT_LOGIN
-        )
+        token = SignInToken.objects.get(pk=pending_id, intent=SignInToken.INTENT_LOGIN)
     except SignInToken.DoesNotExist:
         # Token was cleaned up or never existed — give up on this poll cycle.
         for k in ("pending_signin_token_id", "pending_signin_email", "pending_signin_next"):
