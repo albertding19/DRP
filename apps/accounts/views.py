@@ -15,7 +15,7 @@ import logging
 import secrets
 
 from django.contrib.auth import login
-from django.http import HttpRequest, HttpResponse, HttpResponseBadRequest
+from django.http import HttpRequest, HttpResponse, HttpResponseBadRequest, JsonResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
@@ -143,6 +143,16 @@ def check_email(request: HttpRequest) -> HttpResponse:
         "accounts/check_email.html",
         {"email": (request.GET.get("email") or "").strip()},
     )
+
+
+@require_GET
+def check_email_poll(request: HttpRequest) -> JsonResponse:
+    """Polled by the check-email page to detect when the user has clicked
+    the magic link in another tab (cookies are shared, so the session
+    cookie set by the verify view appears here too within seconds).
+    Returns `{signed_in: bool}`. Exempt from auth middleware because it
+    must be reachable BEFORE the user is signed in."""
+    return JsonResponse({"signed_in": bool(request.session.get("user_id"))})
 
 
 # ---------------------------------------------------------------------------

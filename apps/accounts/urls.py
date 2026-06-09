@@ -16,6 +16,7 @@ urlpatterns = [
     # Anonymous-accessible:
     path("start/", views.start, name="start"),
     path("check-email/", views.check_email, name="check_email"),
+    path("check-email/poll/", views.check_email_poll, name="check_email_poll"),
     path(
         "check-email/available/",
         views.check_email_availability,

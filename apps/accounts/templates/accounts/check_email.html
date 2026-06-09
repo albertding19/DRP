@@ -3,7 +3,40 @@
 {% block title %}Check your email — {{ PROJECT_NAME }}{% endblock %}
 
 {% block content %}
-<section class="check-email">
+<section class="check-email"
+  x-data="{
+    polledOnce: false,
+    init() {
+      /* Poll the server every 2s to detect when the user clicks the
+         magic link in another tab. Cookies are shared across same-
+         browser tabs, so the session cookie set by the /verify/ view
+         shows up here within one poll cycle.
+
+         If the link was clicked in a different browser (rare — most
+         users stay in one), polling can't help — the user's already
+         signed in there, so this page just sits idle until the 20-min
+         self-stop. */
+      const start = Date.now();
+      const url = '{% url 'accounts:check_email_poll' %}';
+      const tick = setInterval(async () => {
+        if (Date.now() - start > 20 * 60 * 1000) {
+          clearInterval(tick);
+          return;
+        }
+        try {
+          const r = await fetch(url, { credentials: 'same-origin', cache: 'no-store' });
+          if (!r.ok) return;
+          const data = await r.json();
+          this.polledOnce = true;
+          if (data.signed_in) {
+            clearInterval(tick);
+            window.location.href = '/';
+          }
+        } catch (e) { /* transient network blip; try again next tick */ }
+      }, 2000);
+    },
+  }"
+>
   <h1>Check your inbox.</h1>
   <p class="lead">
     {% if email %}
@@ -18,14 +51,28 @@
     Didn't get it? Check your spam folder, or
     <a href="{% url 'accounts:start' %}">try a different email</a>.
   </p>
+
+  <p class="check-email-status" x-show="polledOnce" x-cloak>
+    Waiting for your click… you can leave this tab open or switch to
+    your email — we'll bring you in automatically.
+  </p>
 </section>
 {% endblock %}
 
 {% block head_extra %}
 <style>
+  [x-cloak] { display: none !important; }
   .check-email { max-width: 420px; margin: 4rem auto; padding: 0 1rem; }
   .check-email h1 { font-family: var(--font-serif); font-size: 2rem; margin: 0 0 0.5rem; }
   .check-email .lead { font-size: 1.1rem; margin: 0 0 1rem; }
   .check-email-help { color: var(--ink-muted); font-size: 0.9rem; margin-top: 2rem; }
+  .check-email-status {
+    color: var(--ink-muted);
+    font-size: 0.85rem;
+    font-style: italic;
+    margin-top: 1.5rem;
+    padding-top: 1.5rem;
+    border-top: 1px dashed var(--border-color);
+  }
 </style>
 {% endblock %}
