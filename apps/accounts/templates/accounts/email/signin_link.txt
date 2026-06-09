@@ -1,0 +1,11 @@
+Hi,
+
+Here's your sign-in link for {{ PROJECT_NAME }}:
+
+  {{ link }}
+
+It works for {{ ttl_min }} minutes and only once. If you didn't ask for
+this, you can safely ignore it — no one can sign in without clicking the
+link.
+
+— {{ PROJECT_NAME }}

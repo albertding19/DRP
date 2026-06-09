@@ -73,6 +73,9 @@
     <main class="site-main prose">
   {% endif %}
 
+  {% if request.user.is_authenticated %}
+    {% include "accounts/_unclaimed_banner.html" %}
+  {% endif %}
   {% block content %}{% endblock %}
 
   </main>

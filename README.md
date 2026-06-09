@@ -95,6 +95,34 @@ render.yaml             # CD blueprint
 | 16–17 Jun | Final Demo + Presentation | 50% |
 | Thu 19 Jun | Project Documentation | 20% |
 
+## Auth — prerequisites before email + Google sign-in work in prod
+
+The login service ships using **Resend SMTP** for magic-link emails and
+**Google OAuth** for one-click sign-in. Both need to be configured outside
+the repo before they work on Render. The code degrades gracefully when
+they're missing (the welcome page hides the Google button, and email
+sends fail with a user-visible error) but for production you need:
+
+1. **Resend account + verified domain.**
+   - Sign up at https://resend.com
+   - Add and verify a sending domain (SPF + DKIM DNS records). Without
+     verification, magic-link emails land in spam or get bounced.
+   - **Demo shortcut:** leave `DEFAULT_FROM_EMAIL` at the default
+     `unmasked <onboarding@resend.dev>` — Resend allows this shared
+     sender for early projects but deliverability is degraded.
+   - Generate an API key, set it in Render as `RESEND_API_KEY`.
+2. **Google OAuth client.**
+   - Cloud Console → APIs & Services → Credentials → OAuth 2.0 Client ID
+     → Web application.
+   - Authorised redirect URIs (must match exactly):
+     - `http://localhost:8000/accounts/oauth/google/callback/` (dev)
+     - `https://drp-web-5xwh.onrender.com/accounts/oauth/google/callback/` (prod)
+   - While the OAuth consent screen is in dev mode, add yourself + any
+     testers under "Test users".
+   - Set `GOOGLE_OAUTH_CLIENT_ID` and `GOOGLE_OAUTH_CLIENT_SECRET` in
+     Render. `GOOGLE_OAUTH_REDIRECT_URI` defaults to the prod URL above
+     and can be left as-is.
+
 ## Acknowledgements
 
 DRP module: Imperial DoC × Royal College of Art Service Design.

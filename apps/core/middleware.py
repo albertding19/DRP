@@ -2,10 +2,10 @@
 
 Two middlewares live here:
 
-- `EnsureNicknameMiddleware`: the gatekeeper that makes the anonymous-nickname
-  auth model work. Any request that doesn't yet have a `user_id` in the session
-  is redirected to `/accounts/start/`. The exempt list covers ops endpoints,
-  the picker itself, and static files.
+- `EnsureAuthMiddleware`: the gatekeeper. Any request that doesn't yet
+  have a `user_id` in the session is redirected to `/accounts/start/`.
+  The exempt list covers ops endpoints, the welcome page, the magic-link
+  verify route, OAuth callback, HTMX uniqueness checks, and static files.
 
 - `NoCacheHTMLMiddleware`: tells browsers + CDN edges never to cache HTML
   responses. Without this, transient 404s during Render deploy windows can
@@ -23,12 +23,22 @@ from django.http import HttpRequest, HttpResponse
 from django.shortcuts import redirect
 
 
-class EnsureNicknameMiddleware:
-    """Attach `request.user` from `session['user_id']` or redirect to picker."""
+class EnsureAuthMiddleware:
+    """Attach `request.user` from `session['user_id']` or redirect to welcome.
+
+    Behaviour identical to the previous `EnsureNicknameMiddleware` — only
+    the exempt path list and class name changed. The session key
+    (`user_id`) is the same so the existing test fixtures keep working.
+    """
 
     EXEMPT_PREFIXES: tuple[str, ...] = (
+        # Anonymous-accessible auth surfaces:
         "/accounts/start",
+        "/accounts/check-email",
         "/accounts/check-nickname",
+        "/accounts/verify",
+        "/accounts/oauth",
+        # Ops + static:
         "/healthz",
         "/version",
         "/static/",
@@ -57,6 +67,12 @@ class EnsureNicknameMiddleware:
             return redirect("/accounts/start/")
 
         return self.get_response(request)
+
+
+# Back-compat alias. Some places (tests, possibly external configs)
+# reference the old name. Re-exporting keeps them working until they're
+# migrated. Removing this is safe after the next refactor pass.
+EnsureNicknameMiddleware = EnsureAuthMiddleware
 
 
 class NoCacheHTMLMiddleware:

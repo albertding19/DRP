@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+
+{% block title %}Add an email — {{ PROJECT_NAME }}{% endblock %}
+
+{% block content %}
+<section class="claim prose">
+  <h1>Add an email to your account.</h1>
+  <p class="lead">
+    Your nickname-only account stays as is. Adding an email means you can
+    sign back in from another device or after clearing cookies — without
+    it, you'll lose access next time you sign out.
+  </p>
+
+  <form method="post" class="claim-form">
+    {% csrf_token %}
+    <label for="id_email">Email</label>
+    {{ form.email }}
+    {% if form.email.errors %}
+      <div class="form-error" role="alert">{{ form.email.errors.0 }}</div>
+    {% endif %}
+    <button type="submit" class="btn btn-primary">Send me a link</button>
+  </form>
+
+  <p class="claim-fineprint">
+    We'll send a verification link to that address. Your account email
+    isn't set until you click the link.
+  </p>
+</section>
+{% endblock %}
+
+{% block head_extra %}
+<style>
+  .claim { max-width: 480px; padding-top: 1rem; }
+  .claim h1 { font-family: var(--font-serif); font-size: 1.85rem; margin: 0 0 0.5rem; }
+  .claim .lead { color: var(--ink-muted); margin: 0 0 1.5rem; line-height: 1.5; }
+  .claim-form { display: grid; gap: 0.75rem; margin-bottom: 1.5rem; }
+  .claim-form label { font-weight: 600; }
+  .claim-form input[type="email"] { font-size: 1rem; padding: 0.6rem 0.9rem; }
+  .claim-fineprint { color: var(--ink-muted); font-size: 0.85rem; }
+  .form-error { color: #c00; font-size: 0.875rem; }
+</style>
+{% endblock %}

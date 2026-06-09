@@ -1,0 +1,12 @@
+Hi,
+
+You asked to change the email on your {{ PROJECT_NAME }} account to this
+address. Click the link below to confirm — it works for {{ ttl_min }}
+minutes and only once:
+
+  {{ link }}
+
+If you didn't request this, you can safely ignore this email — your
+account email is unchanged until the link is clicked.
+
+— {{ PROJECT_NAME }}

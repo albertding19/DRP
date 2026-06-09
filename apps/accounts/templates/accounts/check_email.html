@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+
+{% block title %}Check your email — {{ PROJECT_NAME }}{% endblock %}
+
+{% block content %}
+<section class="check-email">
+  <h1>Check your inbox.</h1>
+  <p class="lead">
+    {% if email %}
+      We sent a sign-in link to <strong>{{ email }}</strong>.
+    {% else %}
+      We sent you a sign-in link.
+    {% endif %}
+  </p>
+  <p>It works for the next 15 minutes. One click and you're in.</p>
+
+  <p class="check-email-help">
+    Didn't get it? Check your spam folder, or
+    <a href="{% url 'accounts:start' %}">try a different email</a>.
+  </p>
+</section>
+{% endblock %}
+
+{% block head_extra %}
+<style>
+  .check-email { max-width: 420px; margin: 4rem auto; padding: 0 1rem; }
+  .check-email h1 { font-family: var(--font-serif); font-size: 2rem; margin: 0 0 0.5rem; }
+  .check-email .lead { font-size: 1.1rem; margin: 0 0 1rem; }
+  .check-email-help { color: var(--ink-muted); font-size: 0.9rem; margin-top: 2rem; }
+</style>
+{% endblock %}

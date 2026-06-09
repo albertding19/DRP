@@ -1,0 +1,9 @@
+{% comment %}
+  HTMX fragment returned by /accounts/check-email/available/. Shows
+  inline whether the typed email is taken, available, or empty.
+{% endcomment %}
+{% if state == "available" %}
+  <p class="email-state available">✓ available</p>
+{% elif state == "taken" %}
+  <p class="email-state taken">✗ taken — try a different one</p>
+{% endif %}

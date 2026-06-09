@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+
+{% block title %}Settings — {{ PROJECT_NAME }}{% endblock %}
+
+{% block content %}
+<section class="settings prose">
+  <h1>Your account</h1>
+
+  <div class="card setting-block">
+    <h2>Nickname</h2>
+    <p class="setting-meta">How others see you. Change any time.</p>
+    <form method="post" action="{% url 'accounts:settings_nickname' %}" class="setting-form">
+      {% csrf_token %}
+      {{ nickname_form.nickname }}
+      {% if nickname_form.nickname.errors %}
+        <div class="form-error">{{ nickname_form.nickname.errors.0 }}</div>
+      {% endif %}
+      <button type="submit" class="btn btn-primary">Save nickname</button>
+    </form>
+  </div>
+
+  <div class="card setting-block">
+    <h2>Email</h2>
+    {% if request.user.email %}
+      <p class="setting-meta">Currently <strong>{{ request.user.email }}</strong>.
+        Change it below — we'll send a verification link to the new address.</p>
+    {% else %}
+      <p class="setting-meta">No email on file. Add one to sign in from another device.</p>
+    {% endif %}
+    <form method="post" action="{% url 'accounts:settings_email' %}" class="setting-form">
+      {% csrf_token %}
+      {{ email_form.email }}
+      {% if email_form.email.errors %}
+        <div class="form-error">{{ email_form.email.errors.0 }}</div>
+      {% endif %}
+      <button type="submit" class="btn btn-primary">
+        {% if request.user.email %}Send change-email link{% else %}Add email{% endif %}
+      </button>
+    </form>
+  </div>
+
+  <div class="card setting-block setting-danger">
+    <h2>Delete account</h2>
+    <p class="setting-meta">
+      Wipes your tasks, votes, and memberships. Posts and comments survive as
+      <em>[deleted]</em> so the threads they're in stay legible.
+      Can't be undone.
+    </p>
+    <form method="post" action="{% url 'accounts:settings_delete' %}"
+          onsubmit="return confirm('Delete your account? This can\'t be undone.');">
+      {% csrf_token %}
+      <button type="submit" class="btn btn-danger">Delete my account</button>
+    </form>
+  </div>
+
+  <p class="settings-footer">
+    <form method="post" action="{% url 'accounts:logout' %}" style="display:inline;">
+      {% csrf_token %}
+      <button type="submit" class="btn btn-secondary">Sign out</button>
+    </form>
+  </p>
+</section>
+{% endblock %}
+
+{% block head_extra %}
+<style>
+  .settings { max-width: 600px; padding-top: 1rem; }
+  .settings h1 {
+    font-family: var(--font-serif);
+    font-size: 2rem;
+    margin: 0 0 1.5rem;
+  }
+  .setting-block { padding: 1.25rem 1.5rem; margin-bottom: 1.25rem; }
+  .setting-block h2 {
+    font-family: var(--font-serif);
+    font-size: 1.1rem;
+    margin: 0 0 0.3rem;
+  }
+  .setting-meta { color: var(--ink-muted); font-size: 0.9rem; margin: 0 0 1rem; }
+  .setting-form { display: grid; gap: 0.6rem; }
+  .setting-form input { font-size: 1rem; padding: 0.55rem 0.85rem; width: 100%; }
+  .setting-form button { justify-self: start; }
+  .setting-danger {
+    border-color: #d8b8b8;
+    background: #fdf6f5;
+  }
+  .btn-danger {
+    background: #c44b4b;
+    color: white;
+    border-color: #c44b4b;
+  }
+  .btn-danger:hover { background: #a83c3c; border-color: #a83c3c; }
+  .form-error { color: #c00; font-size: 0.85rem; }
+  .settings-footer { margin-top: 2rem; text-align: right; }
+</style>
+{% endblock %}

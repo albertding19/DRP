@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+
+{% block title %}Sign-in failed — {{ PROJECT_NAME }}{% endblock %}
+
+{% block content %}
+<section class="oauth-error">
+  <h1>Google sign-in didn't work.</h1>
+  <p class="lead">{{ reason }}</p>
+  <p class="actions">
+    <a href="{% url 'accounts:start' %}" class="btn btn-primary">Try again</a>
+  </p>
+</section>
+{% endblock %}
+
+{% block head_extra %}
+<style>
+  .oauth-error { max-width: 420px; margin: 4rem auto; padding: 0 1rem; }
+  .oauth-error h1 { font-family: var(--font-serif); font-size: 1.75rem; margin: 0 0 0.5rem; }
+  .oauth-error .lead { color: var(--ink-muted); margin: 0 0 1rem; }
+  .oauth-error .actions { margin-top: 2rem; }
+</style>
+{% endblock %}

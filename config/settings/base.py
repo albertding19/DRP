@@ -80,8 +80,8 @@ MIDDLEWARE = [
     # Must come BEFORE EnsureNicknameMiddleware so it catches the redirect responses
     # too (otherwise the cache header is skipped when EnsureNickname short-circuits).
     "apps.core.middleware.NoCacheHTMLMiddleware",
-    # Custom: redirects to /accounts/start/ when no nickname session
-    "apps.core.middleware.EnsureNicknameMiddleware",
+    # Custom: redirects anonymous requests to /accounts/start/.
+    "apps.core.middleware.EnsureAuthMiddleware",
 ]
 
 ROOT_URLCONF = "config.urls"
@@ -234,3 +234,52 @@ TASKS_TRANSITION_MINUTES = env.int("TASKS_TRANSITION_MINUTES", default=5)
 # Minimum seconds between two consecutive "I need a break" presses, to
 # prevent the user spamming and stacking breaks.
 TASKS_BREAK_COOLDOWN_S = env.int("TASKS_BREAK_COOLDOWN_S", default=60)
+
+# ---------------------------------------------------------------------------
+# Auth — magic-link email + Google OAuth
+# ---------------------------------------------------------------------------
+# Resend SMTP credentials. `RESEND_API_KEY` doubles as the SMTP password
+# (Resend uses the literal username "resend" + the API key as password).
+# When empty, prod sends will fail with SMTPAuthError — the dev/test
+# environments use console/locmem backends so the key is only required in
+# prod. See config/settings/prod.py for the SMTP backend wiring.
+RESEND_API_KEY = env("RESEND_API_KEY", default="")
+
+# The address magic-link emails come from. Must be a domain verified in
+# the Resend dashboard for production deliverability; the `onboarding@resend.dev`
+# default is Resend's shared-demo sender and works for early prototypes
+# but lands in spam more often. See README "Email setup" for the domain-
+# verification steps.
+DEFAULT_FROM_EMAIL = env(
+    "DEFAULT_FROM_EMAIL",
+    default="unmasked <onboarding@resend.dev>",
+)
+
+# Magic-link expiry in minutes. 15 is the industry standard — long enough
+# for the user to switch tabs and find the email, short enough that a
+# stolen link goes stale before useful exploitation.
+SIGNIN_TOKEN_TTL_MIN = env.int("SIGNIN_TOKEN_TTL_MIN", default=15)
+
+# How many magic links a single email address can request per rolling
+# hour, and how many a single IP can request. Both are checked at issue
+# time, blocking attackers who try to mailbomb someone's inbox AND
+# attackers who try many addresses from one machine.
+SIGNIN_RATE_LIMIT_PER_HOUR = env.int("SIGNIN_RATE_LIMIT_PER_HOUR", default=5)
+SIGNIN_IP_RATE_LIMIT_PER_HOUR = env.int("SIGNIN_IP_RATE_LIMIT_PER_HOUR", default=10)
+
+# Google OAuth — credentials obtained from https://console.cloud.google.com
+# (APIs & Services → Credentials → OAuth 2.0 Client ID, Web application).
+# Both client ID and secret are empty by default so dev environments can
+# run without OAuth wired up; the welcome page hides the Google button
+# when the client ID is missing.
+GOOGLE_OAUTH_CLIENT_ID = env("GOOGLE_OAUTH_CLIENT_ID", default="")
+GOOGLE_OAUTH_CLIENT_SECRET = env("GOOGLE_OAUTH_CLIENT_SECRET", default="")
+
+# The redirect URI registered with Google. Must match exactly what's
+# configured in the Cloud Console "Authorised redirect URIs" list. We
+# never compute this from request data — Google rejects mismatches and
+# user-controlled redirect URIs are a known OAuth attack surface.
+GOOGLE_OAUTH_REDIRECT_URI = env(
+    "GOOGLE_OAUTH_REDIRECT_URI",
+    default="http://localhost:8000/accounts/oauth/google/callback/",
+)

@@ -33,3 +33,23 @@ X_FRAME_OPTIONS = "DENY"
 _render_url = os.getenv("RENDER_EXTERNAL_URL", "").strip()
 if _render_url:
     CSRF_TRUSTED_ORIGINS = [_render_url]
+
+# ---------------------------------------------------------------------------
+# Email — Resend SMTP
+# ---------------------------------------------------------------------------
+# Resend exposes plain SMTP at smtp.resend.com:587 (STARTTLS). The username
+# is the literal "resend"; the password is the project's API key. We use
+# Django's built-in SMTP backend rather than the resend Python SDK so we
+# don't take on a new dependency — Django's mail machinery works fine.
+#
+# EMAIL_TIMEOUT prevents a hung SMTP connection from blocking the worker
+# during the M2 demo — the user sees a friendly error instead of a 2-minute
+# stall.
+EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+EMAIL_HOST = "smtp.resend.com"
+EMAIL_PORT = 587
+EMAIL_HOST_USER = "resend"
+EMAIL_HOST_PASSWORD = os.getenv("RESEND_API_KEY", "")
+EMAIL_USE_TLS = True
+EMAIL_USE_SSL = False  # mutually exclusive with TLS — explicit guard
+EMAIL_TIMEOUT = 10  # seconds

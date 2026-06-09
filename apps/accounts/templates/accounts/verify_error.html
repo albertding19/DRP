@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+
+{% block title %}Link didn't work — {{ PROJECT_NAME }}{% endblock %}
+
+{% block content %}
+<section class="verify-error">
+  {% if reason == "expired" %}
+    <h1>That link expired.</h1>
+    <p>Sign-in links work for 15 minutes — yours has timed out.</p>
+  {% elif reason == "used" %}
+    <h1>That link's already been used.</h1>
+    <p>Each link works once. Request a fresh one to sign in.</p>
+  {% elif reason == "email_taken" %}
+    <h1>Hmm — that email is in use elsewhere.</h1>
+    <p>Someone else already claimed this email between your request and your click.
+      Try a different address.</p>
+  {% else %}
+    <h1>That link didn't work.</h1>
+    <p>It might have been mangled by your email client, or it's just been
+      garbled in transit. Give it another go.</p>
+  {% endif %}
+
+  <p class="actions">
+    <a href="{% url 'accounts:start' %}" class="btn btn-primary">Send a new link</a>
+  </p>
+</section>
+{% endblock %}
+
+{% block head_extra %}
+<style>
+  .verify-error { max-width: 420px; margin: 4rem auto; padding: 0 1rem; }
+  .verify-error h1 { font-family: var(--font-serif); font-size: 1.75rem; margin: 0 0 0.5rem; }
+  .verify-error .actions { margin-top: 2rem; }
+</style>
+{% endblock %}

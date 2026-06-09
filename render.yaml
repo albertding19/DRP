@@ -89,4 +89,20 @@ services:
         sync: false
       - key: LIVEKIT_URL
         sync: false
+      # Resend SMTP — the API key doubles as the SMTP password (host is
+      # smtp.resend.com:587, user is "resend"). DEFAULT_FROM_EMAIL must
+      # use a domain verified in the Resend dashboard for deliverability.
+      - key: RESEND_API_KEY
+        sync: false
+      - key: DEFAULT_FROM_EMAIL
+        value: "unmasked <onboarding@resend.dev>"
+      # Google OAuth credentials — Cloud Console → APIs & Services →
+      # Credentials → OAuth 2.0 Client ID (Web application). The redirect
+      # URI must match exactly what's registered in the console.
+      - key: GOOGLE_OAUTH_CLIENT_ID
+        sync: false
+      - key: GOOGLE_OAUTH_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_OAUTH_REDIRECT_URI
+        value: "https://drp-web-5xwh.onrender.com/accounts/oauth/google/callback/"
       # RENDER_GIT_COMMIT is auto-injected by Render at build time
