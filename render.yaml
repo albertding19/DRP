@@ -99,7 +99,7 @@ services:
       - key: RESEND_API_KEY
         sync: false
       - key: DEFAULT_FROM_EMAIL
-        value: "unmasked <onboarding@resend.dev>"
+        value: "unmasked <auth@drp.it.com>"
       # Google OAuth credentials — Cloud Console → APIs & Services →
       # Credentials → OAuth 2.0 Client ID (Web application). The redirect
       # URI must match exactly what's registered in the console.
