@@ -152,12 +152,23 @@ def _google_configured() -> bool:
 @require_GET
 def check_email(request: HttpRequest) -> HttpResponse:
     """Interstitial: 'We sent you a link to <email>.' Shown after a
-    successful POST on the welcome page. Doesn't trust the email param
-    for anything but display — no DB lookup."""
+    successful POST on the welcome page AND after claim / email-change
+    requests. Doesn't trust the email param for anything but display +
+    the verification poll — no DB lookup here.
+
+    `verifying` discriminates the two waits: an anonymous visitor is
+    waiting to BECOME signed in (login flow); an already-signed-in user
+    is waiting for the email to be ATTACHED to their account (claim /
+    email-change). The template polls differently per mode — without
+    this, the signed-in poll fired instantly for verifying users and
+    yanked them off this page before they could read it."""
     return render(
         request,
         "accounts/check_email.html",
-        {"email": (request.GET.get("email") or "").strip()},
+        {
+            "email": (request.GET.get("email") or "").strip(),
+            "verifying": bool(request.session.get("user_id")),
+        },
     )
 
 
@@ -190,6 +201,20 @@ def check_email_poll(request: HttpRequest) -> JsonResponse:
     The verification email's body explicitly notes "if you didn't ask for
     this, ignore this email" for exactly this reason.
     """
+    # Claim / email-change wait (`?verifying=<email>`): the user is
+    # ALREADY signed in, so "is there a session?" answers nothing — the
+    # question is whether the link has been clicked and the email
+    # attached to their account. Checked BEFORE the signed-in branch
+    # below, which would otherwise answer true on the first poll and
+    # bounce verifying users off the page.
+    pending_email = (request.GET.get("verifying") or "").strip().lower()
+    if pending_email:
+        user_id = request.session.get("user_id")
+        verified = (
+            user_id is not None and User.objects.filter(pk=user_id, email=pending_email).exists()
+        )
+        return JsonResponse({"verified": verified})
+
     # Already signed in (via the cookie or via this poll cycle).
     if request.session.get("user_id"):
         return JsonResponse({"signed_in": True})

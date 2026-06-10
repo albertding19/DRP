@@ -361,3 +361,67 @@ class TestEmailDeliveryFailure:
         assert response.status_code == 200
         assert self._COULDNT_SEND in response.content
         assert SignInToken.objects.count() == 0
+
+
+# ---------------------------------------------------------------------------
+# Check-email page: verification wait must not bounce signed-in users
+# ---------------------------------------------------------------------------
+@pytest.mark.django_db
+class TestCheckEmailVerificationWait:
+    """Regression: the check-email page polls check_email_poll, whose
+    first branch answered signed_in=true for ANY session — so users who
+    were already signed in (claim / email-change) were redirected to /
+    on the first poll, 2 seconds after landing. In verifying mode the
+    poll must instead answer "is the email attached yet"."""
+
+    def test_poll_verifying_false_while_unclicked(self) -> None:
+        client, _ = _authed_client()  # no email yet
+        r = client.get("/accounts/check-email/poll/?verifying=new@example.com")
+        assert r.json() == {"verified": False}
+
+    def test_poll_verifying_true_once_email_attached(self) -> None:
+        client, user = _authed_client()
+        user.email = "new@example.com"
+        user.save(update_fields=["email"])
+        r = client.get("/accounts/check-email/poll/?verifying=new@example.com")
+        assert r.json() == {"verified": True}
+
+    def test_poll_verifying_normalises_case(self) -> None:
+        client, user = _authed_client()
+        user.email = "new@example.com"
+        user.save(update_fields=["email"])
+        r = client.get("/accounts/check-email/poll/?verifying=New@Example.COM")
+        assert r.json() == {"verified": True}
+
+    def test_poll_verifying_anonymous_is_false(self) -> None:
+        r = Client().get("/accounts/check-email/poll/?verifying=x@example.com")
+        assert r.json() == {"verified": False}
+
+    def test_poll_without_param_keeps_login_behaviour(self) -> None:
+        client, _ = _authed_client()
+        r = client.get("/accounts/check-email/poll/")
+        assert r.json() == {"signed_in": True}
+
+    def test_page_renders_verifying_copy_for_authed_user(self) -> None:
+        client, _ = _authed_client()
+        r = client.get("/accounts/check-email/?email=new@example.com")
+        assert b"confirmation link" in r.content
+        assert b"go back to settings" in r.content
+        assert b"sign-in link" not in r.content
+
+    def test_page_renders_login_copy_for_anonymous(self) -> None:
+        r = Client().get("/accounts/check-email/?email=new@example.com")
+        assert b"sign-in link" in r.content
+        assert b"confirmation link" not in r.content
+
+    def test_full_claim_wait_cycle(self) -> None:
+        # POST claim → poll false → click link → poll true.
+        client, user = _authed_client()
+        client.post("/accounts/claim/", {"email": "cycle@example.com"})
+        poll = "/accounts/check-email/poll/?verifying=cycle@example.com"
+        assert client.get(poll).json() == {"verified": False}
+        raw = _extract_raw_token(mail.outbox[-1].body)
+        client.get(f"/accounts/verify/?t={raw}")
+        assert client.get(poll).json() == {"verified": True}
+        user.refresh_from_db()
+        assert user.email == "cycle@example.com"

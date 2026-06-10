@@ -7,17 +7,23 @@
   x-data="{
     polledOnce: false,
     init() {
-      /* Poll the server every 2s to detect when the user clicks the
-         magic link in another tab. Cookies are shared across same-
-         browser tabs, so the session cookie set by the /verify/ view
-         shows up here within one poll cycle.
-
-         If the link was clicked in a different browser (rare — most
-         users stay in one), polling can't help — the user's already
-         signed in there, so this page just sits idle until the 20-min
-         self-stop. */
+      /* Two waits share this page (see views.check_email):
+           login flow (anonymous)  — poll until this browser is signed
+             in, then go to the app. Cookies are shared across same-
+             browser tabs, so the session cookie set by /verify/ shows
+             up here within one poll cycle.
+           verifying flow (signed in, claim / email-change) — poll until
+             the email is attached to the account, then go to settings.
+             Polling 'signed in?' here would answer true instantly and
+             yank the user off this page — that was a real bug.
+         If the link was clicked in a different browser (rare), polling
+         can't help; the page sits idle until the 20-min self-stop. */
+      const VERIFYING = {{ verifying|yesno:'true,false' }};
+      const EMAIL = '{{ email|escapejs }}';
+      if (VERIFYING && !EMAIL) return; // direct nav, nothing to wait on
+      const url = '{% url 'accounts:check_email_poll' %}'
+        + (VERIFYING ? '?verifying=' + encodeURIComponent(EMAIL) : '');
       const start = Date.now();
-      const url = '{% url 'accounts:check_email_poll' %}';
       const tick = setInterval(async () => {
         if (Date.now() - start > 20 * 60 * 1000) {
           clearInterval(tick);
@@ -28,9 +34,11 @@
           if (!r.ok) return;
           const data = await r.json();
           this.polledOnce = true;
-          if (data.signed_in) {
+          if (VERIFYING ? data.verified : data.signed_in) {
             clearInterval(tick);
-            window.location.href = data.next || '/';
+            window.location.href = VERIFYING
+              ? '{% url 'accounts:settings' %}'
+              : (data.next || '/');
           }
         } catch (e) { /* transient network blip; try again next tick */ }
       }, 2000);
@@ -39,22 +47,40 @@
 >
   <h1>Check your inbox.</h1>
   <p class="lead">
-    {% if email %}
-      We sent a sign-in link to <strong>{{ email }}</strong>.
+    {% if verifying %}
+      {% if email %}
+        We sent a confirmation link to <strong>{{ email }}</strong>.
+      {% else %}
+        We sent you a confirmation link.
+      {% endif %}
     {% else %}
-      We sent you a sign-in link.
+      {% if email %}
+        We sent a sign-in link to <strong>{{ email }}</strong>.
+      {% else %}
+        We sent you a sign-in link.
+      {% endif %}
     {% endif %}
   </p>
   <p>It works for the next 15 minutes. One click and you're in.</p>
 
   <p class="check-email-help">
-    Didn't get it? Check your spam folder, or
-    <a href="{% url 'accounts:start' %}">try a different email</a>.
+    {% if verifying %}
+      Didn't get it? Check your spam folder, or
+      <a href="{% url 'accounts:settings' %}">go back to settings</a>.
+    {% else %}
+      Didn't get it? Check your spam folder, or
+      <a href="{% url 'accounts:start' %}">try a different email</a>.
+    {% endif %}
   </p>
 
   <p class="check-email-status" x-show="polledOnce" x-cloak>
-    Waiting for your click… you can leave this tab open or switch to
-    your email — we'll bring you in automatically.
+    {% if verifying %}
+      Waiting for your click… once you confirm, we'll take you back to
+      your settings automatically.
+    {% else %}
+      Waiting for your click… you can leave this tab open or switch to
+      your email — we'll bring you in automatically.
+    {% endif %}
   </p>
 </section>
 {% endblock %}
