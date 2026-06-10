@@ -33,6 +33,11 @@ SECRET_KEY = env("SECRET_KEY", default="insecure-default-only-for-dev")
 DEBUG = env("DEBUG")
 ALLOWED_HOSTS = env("ALLOWED_HOSTS")
 
+# When set (prod), CanonicalHostMiddleware 301s every other hostname to
+# this one — keeps email links on the domain we send from (mail providers
+# treat sender/link domain mismatch as a phishing signal). Empty = off.
+CANONICAL_HOST = env("CANONICAL_HOST", default="")
+
 # ---------------------------------------------------------------------------
 # Applications
 # ---------------------------------------------------------------------------
@@ -68,6 +73,9 @@ INSTALLED_APPS = [
 # ---------------------------------------------------------------------------
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    # Custom: pins all traffic to CANONICAL_HOST (no-op when unset). Early,
+    # so nothing else wastes work on requests that are about to be 301'd.
+    "apps.core.middleware.CanonicalHostMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",

@@ -100,6 +100,16 @@ services:
         sync: false
       - key: DEFAULT_FROM_EMAIL
         value: "unmasked <auth@drp.it.com>"
+      # Custom domain (added in the Render dashboard under Custom Domains).
+      # CANONICAL_HOST makes the app 301 every other hostname there, so
+      # magic-link emails always link to the domain we send from — Gmail
+      # scores sender/link mismatch as phishing. NOTE: blueprint env-var
+      # sync has not been applying reliably; if a deploy doesn't pick
+      # these up, set them in the dashboard Environment tab by hand.
+      - key: ALLOWED_HOSTS
+        value: "drp.it.com,www.drp.it.com"
+      - key: CANONICAL_HOST
+        value: "drp.it.com"
       # Google OAuth credentials — Cloud Console → APIs & Services →
       # Credentials → OAuth 2.0 Client ID (Web application). The redirect
       # URI must match exactly what's registered in the console.

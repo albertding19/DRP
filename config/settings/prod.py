@@ -29,10 +29,18 @@ SECURE_CONTENT_TYPE_NOSNIFF = True
 SECURE_REFERRER_POLICY = "same-origin"
 X_FRAME_OPTIONS = "DENY"
 
-# CSRF trusted origins (Render injects its own URL via env)
+# CSRF trusted origins: the Render-injected URL plus every env-provided
+# host (the custom domain lives in ALLOWED_HOSTS). Without the custom
+# domain here, every POST on drp.it.com fails Django's CSRF origin check.
 _render_url = os.getenv("RENDER_EXTERNAL_URL", "").strip()
-if _render_url:
-    CSRF_TRUSTED_ORIGINS = [_render_url]
+_csrf_origins = {_render_url} if _render_url else set()
+_csrf_origins |= {
+    f"https://{h}"
+    for h in ALLOWED_HOSTS
+    if h not in ("localhost", "127.0.0.1")  # noqa: F405
+}
+if _csrf_origins:
+    CSRF_TRUSTED_ORIGINS = sorted(_csrf_origins)
 
 # ---------------------------------------------------------------------------
 # Email — Resend HTTP API

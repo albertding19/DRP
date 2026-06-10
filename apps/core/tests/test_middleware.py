@@ -49,3 +49,35 @@ class TestNoCacheHTMLMiddleware:
         session.save()
         response = client.get("/accounts/start/")
         assert "no-store" in response["Cache-Control"]
+
+
+@pytest.mark.django_db
+class TestCanonicalHostMiddleware:
+    """Requests on non-canonical hostnames must 301 to CANONICAL_HOST
+    (path + query preserved); health endpoints stay exempt so Render's
+    internal checks keep getting 200s. Unset (dev/test) = no-op."""
+
+    def test_redirects_to_canonical_host(self, settings) -> None:
+        settings.CANONICAL_HOST = "canonical.example"
+        r = Client().get("/accounts/start/", HTTP_HOST="other.example")
+        assert r.status_code == 301
+        assert r["Location"] == "https://canonical.example/accounts/start/"
+
+    def test_preserves_path_and_query(self, settings) -> None:
+        settings.CANONICAL_HOST = "canonical.example"
+        r = Client().get("/accounts/start/?next=/feed/", HTTP_HOST="other.example")
+        assert r["Location"] == "https://canonical.example/accounts/start/?next=/feed/"
+
+    def test_canonical_host_passes_through(self, settings) -> None:
+        settings.CANONICAL_HOST = "canonical.example"
+        r = Client().get("/accounts/start/", HTTP_HOST="canonical.example")
+        assert r.status_code == 200
+
+    def test_health_endpoints_exempt(self, settings) -> None:
+        settings.CANONICAL_HOST = "canonical.example"
+        assert Client().get("/healthz", HTTP_HOST="other.example").status_code == 200
+        assert Client().get("/version", HTTP_HOST="other.example").status_code == 200
+
+    def test_disabled_when_unset(self) -> None:
+        # CANONICAL_HOST defaults to "" outside prod — any host works.
+        assert Client().get("/accounts/start/", HTTP_HOST="whatever.example").status_code == 200

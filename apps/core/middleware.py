@@ -1,6 +1,11 @@
 """Project-wide middleware.
 
-Two middlewares live here:
+Three middlewares live here:
+
+- `CanonicalHostMiddleware`: 301s every request to `CANONICAL_HOST`
+  (no-op when unset). Keeps all traffic — and every absolute URL built
+  from the request host, magic-link emails especially — on the custom
+  domain instead of *.onrender.com.
 
 - `EnsureAuthMiddleware`: the gatekeeper. Any request that doesn't yet
   have a `user_id` in the session is redirected to `/accounts/start/`.
@@ -18,9 +23,40 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.http import HttpRequest, HttpResponse
+from django.http import HttpRequest, HttpResponse, HttpResponsePermanentRedirect
 from django.shortcuts import redirect
+
+
+class CanonicalHostMiddleware:
+    """301-redirect any request on a non-canonical hostname.
+
+    Mail providers score sender-domain/link-domain mismatch as a phishing
+    signal — magic-link emails sent from auth@drp.it.com must link to
+    drp.it.com, not drp-web-xxxx.onrender.com. Links are built from the
+    request host (`request.build_absolute_uri`), so pinning the host pins
+    the links. Part of email deliverability, not just cosmetics.
+
+    Disabled when `CANONICAL_HOST` is empty (dev/test). Health endpoints
+    are exempt — Render's checks hit the service's internal hostname and
+    must get a 200, not a 301.
+    """
+
+    EXEMPT_PATHS: tuple[str, ...] = ("/healthz", "/version")
+
+    def __init__(self, get_response: Callable[[HttpRequest], HttpResponse]) -> None:
+        self.get_response = get_response
+
+    def __call__(self, request: HttpRequest) -> HttpResponse:
+        canonical = settings.CANONICAL_HOST
+        if (
+            canonical
+            and request.get_host() != canonical
+            and not request.path.startswith(self.EXEMPT_PATHS)
+        ):
+            return HttpResponsePermanentRedirect(f"https://{canonical}{request.get_full_path()}")
+        return self.get_response(request)
 
 
 class EnsureAuthMiddleware:
