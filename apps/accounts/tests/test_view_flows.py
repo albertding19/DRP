@@ -425,3 +425,53 @@ class TestCheckEmailVerificationWait:
         assert client.get(poll).json() == {"verified": True}
         user.refresh_from_db()
         assert user.email == "cycle@example.com"
+
+
+# ---------------------------------------------------------------------------
+# Instant refresh: verify signals the per-token signin WS group
+# ---------------------------------------------------------------------------
+@pytest.mark.django_db
+class TestSignInRedeemedPush:
+    def test_verify_broadcasts_after_commit(self, django_capture_on_commit_callbacks) -> None:
+        client = Client()
+        client.post("/accounts/start/", {"email": "push@example.com"})
+        token_pk = SignInToken.objects.get().pk
+        raw = _extract_raw_token(mail.outbox[-1].body)
+        with (
+            patch("apps.accounts.services.broadcast") as fake,
+            django_capture_on_commit_callbacks(execute=True),
+        ):
+            client.get(f"/accounts/verify/?t={raw}")
+        fake.broadcast_signin_redeemed.assert_called_once_with(token_id=token_pk)
+
+    def test_failed_verify_does_not_broadcast(self, django_capture_on_commit_callbacks) -> None:
+        with (
+            patch("apps.accounts.services.broadcast") as fake,
+            django_capture_on_commit_callbacks(execute=True),
+        ):
+            Client().get("/accounts/verify/?t=not-a-real-token")
+        fake.broadcast_signin_redeemed.assert_not_called()
+
+    def test_login_flow_page_subscribes_to_token_socket(self) -> None:
+        client = Client()
+        r = client.post("/accounts/start/", {"email": "sock@example.com"}, follow=True)
+        token_pk = SignInToken.objects.get().pk
+        assert f"/ws/signin/{token_pk}/".encode() in r.content
+
+    def test_claim_flow_page_subscribes_to_token_socket(self) -> None:
+        client, _ = _authed_client()
+        r = client.post("/accounts/claim/", {"email": "socl@example.com"}, follow=True)
+        token_pk = SignInToken.objects.get().pk
+        assert f"/ws/signin/{token_pk}/".encode() in r.content
+
+    def test_email_change_page_subscribes_to_token_socket(self) -> None:
+        client, _ = _authed_client(email="old@example.com")
+        r = client.post("/accounts/settings/email/", {"email": "socm@example.com"}, follow=True)
+        token_pk = SignInToken.objects.get().pk
+        assert f"/ws/signin/{token_pk}/".encode() in r.content
+
+    def test_direct_nav_has_no_socket(self) -> None:
+        # No pending token in the session → page renders without a WS sub.
+        client, _ = _authed_client()
+        r = client.get("/accounts/check-email/")
+        assert b"/ws/signin/" not in r.content

@@ -35,6 +35,8 @@ from django.urls import reverse
 from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
 
+from apps.realtime import broadcast
+
 from . import oauth_google
 from .models import SignInToken, User
 
@@ -345,6 +347,12 @@ def verify_signin_token(
         user.save(update_fields=["email"])
     else:
         raise SignInTokenInvalidError(f"unsupported intent: {token.intent}")
+
+    # Wake the check-email page that's waiting on this link — but only
+    # after the transaction commits, so when the page re-checks via the
+    # poll endpoint it sees the attached email / consumed token. A
+    # failure path above rolls back and the callback never fires.
+    transaction.on_commit(lambda: broadcast.broadcast_signin_redeemed(token_id=token.pk))
 
     logger.info(
         "signin_token redeemed",

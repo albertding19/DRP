@@ -6,44 +6,58 @@
 <section class="check-email"
   x-data="{
     polledOnce: false,
+    finished: false,
+    verifying: {{ verifying|yesno:'true,false' }},
+    email: '{{ email|escapejs }}',
+    /* The session-gated poll endpoint is the single source of truth for
+       BOTH the 2s timer and the WS wake-up — the push itself carries no
+       data (see SignInConsumer) and is never trusted directly. */
+    async checkNow() {
+      if (this.finished) return;
+      if (this.verifying && !this.email) return; // direct nav, nothing to wait on
+      const url = '{% url 'accounts:check_email_poll' %}'
+        + (this.verifying ? '?verifying=' + encodeURIComponent(this.email) : '');
+      try {
+        const r = await fetch(url, { credentials: 'same-origin', cache: 'no-store' });
+        if (!r.ok) return;
+        const data = await r.json();
+        this.polledOnce = true;
+        if (this.verifying ? data.verified : data.signed_in) {
+          this.finished = true;
+          window.location.href = this.verifying
+            ? '{% url 'accounts:settings' %}'
+            : (data.next || '/');
+        }
+      } catch (e) { /* transient network blip; try again next tick */ }
+    },
     init() {
       /* Two waits share this page (see views.check_email):
-           login flow (anonymous)  — poll until this browser is signed
+           login flow (anonymous)  — wait until this browser is signed
              in, then go to the app. Cookies are shared across same-
              browser tabs, so the session cookie set by /verify/ shows
-             up here within one poll cycle.
-           verifying flow (signed in, claim / email-change) — poll until
+             up here within one cycle.
+           verifying flow (signed in, claim / email-change) — wait until
              the email is attached to the account, then go to settings.
-             Polling 'signed in?' here would answer true instantly and
+             Checking 'signed in?' here would answer true instantly and
              yank the user off this page — that was a real bug.
-         If the link was clicked in a different browser (rare), polling
-         can't help; the page sits idle until the 20-min self-stop. */
-      const VERIFYING = {{ verifying|yesno:'true,false' }};
-      const EMAIL = '{{ email|escapejs }}';
-      if (VERIFYING && !EMAIL) return; // direct nav, nothing to wait on
-      const url = '{% url 'accounts:check_email_poll' %}'
-        + (VERIFYING ? '?verifying=' + encodeURIComponent(EMAIL) : '');
+
+         Fast path: subscribe to the per-token signin WS; /verify/
+         signals it the moment the link is redeemed — on ANY device.
+         Fallback: the 2s poll below, with a 20-min self-stop. */
+      {% if ws_token_id %}
+        this.$store.ws.connect('/ws/signin/{{ ws_token_id }}/');
+      {% endif %}
       const start = Date.now();
-      const tick = setInterval(async () => {
-        if (Date.now() - start > 20 * 60 * 1000) {
+      const tick = setInterval(() => {
+        if (this.finished || Date.now() - start > 20 * 60 * 1000) {
           clearInterval(tick);
           return;
         }
-        try {
-          const r = await fetch(url, { credentials: 'same-origin', cache: 'no-store' });
-          if (!r.ok) return;
-          const data = await r.json();
-          this.polledOnce = true;
-          if (VERIFYING ? data.verified : data.signed_in) {
-            clearInterval(tick);
-            window.location.href = VERIFYING
-              ? '{% url 'accounts:settings' %}'
-              : (data.next || '/');
-          }
-        } catch (e) { /* transient network blip; try again next tick */ }
+        this.checkNow();
       }, 2000);
     },
   }"
+  x-on:ws:signin_redeemed.window="checkNow()"
 >
   <h1>Check your inbox.</h1>
   <p class="lead">

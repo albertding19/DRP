@@ -161,13 +161,22 @@ def check_email(request: HttpRequest) -> HttpResponse:
     is waiting for the email to be ATTACHED to their account (claim /
     email-change). The template polls differently per mode — without
     this, the signed-in poll fired instantly for verifying users and
-    yanked them off this page before they could read it."""
+    yanked them off this page before they could read it.
+
+    `ws_token_id` (when the requesting view stashed it in the session)
+    lets the page also subscribe to `/ws/signin/<id>/` for an instant
+    push when the link is redeemed; the poll remains the fallback."""
+    verifying = bool(request.session.get("user_id"))
+    ws_token_id = request.session.get(
+        "pending_verify_token_id" if verifying else "pending_signin_token_id"
+    )
     return render(
         request,
         "accounts/check_email.html",
         {
             "email": (request.GET.get("email") or "").strip(),
-            "verifying": bool(request.session.get("user_id")),
+            "verifying": verifying,
+            "ws_token_id": ws_token_id,
         },
     )
 
@@ -353,7 +362,7 @@ def claim(request: HttpRequest) -> HttpResponse:
         form = ClaimEmailForm(request.POST)
         if form.is_valid():
             try:
-                claim_account_with_email(
+                token = claim_account_with_email(
                     user=request.user,
                     email=form.cleaned_data["email"],
                     ip_address=_client_ip(request),
@@ -372,6 +381,9 @@ def claim(request: HttpRequest) -> HttpResponse:
                     "We couldn't send the verification email — please try again in a moment.",
                 )
             else:
+                # Lets the check-email page open the per-token WS and hear
+                # about the redemption the instant the link is clicked.
+                request.session["pending_verify_token_id"] = token.pk
                 return redirect(
                     reverse("accounts:check_email") + f"?email={form.cleaned_data['email']}"
                 )
@@ -431,7 +443,7 @@ def settings_email(request: HttpRequest) -> HttpResponse:
     form = SettingsEmailForm(request.POST, current_user=request.user)
     if form.is_valid():
         try:
-            request_email_change(
+            token = request_email_change(
                 user=request.user,
                 new_email=form.cleaned_data["email"],
                 ip_address=_client_ip(request),
@@ -447,6 +459,9 @@ def settings_email(request: HttpRequest) -> HttpResponse:
                 "We couldn't send the verification email — please try again in a moment.",
             )
         else:
+            # Lets the check-email page open the per-token WS and hear
+            # about the redemption the instant the link is clicked.
+            request.session["pending_verify_token_id"] = token.pk
             return redirect(
                 reverse("accounts:check_email") + f"?email={form.cleaned_data['email']}"
             )

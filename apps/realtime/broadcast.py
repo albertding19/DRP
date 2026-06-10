@@ -149,3 +149,15 @@ def broadcast_booking_cancelled(*, notify_user_id: int, booking_id: int) -> None
         "booking_cancelled",
         {"booking_id": booking_id},
     )
+
+
+def broadcast_signin_redeemed(*, token_id: int) -> None:
+    """Wake-up signal for the check-email page: the magic link tied to
+    `token_id` was just redeemed (login, claim, or email-change alike).
+
+    Deliberately carries an EMPTY payload — token pks are guessable
+    sequential ints, so the subscribing page re-checks its state through
+    the session-gated poll endpoint instead of trusting the push."""
+    from .groups import signin_group
+
+    _send(signin_group(token_id), "signin_redeemed", {})

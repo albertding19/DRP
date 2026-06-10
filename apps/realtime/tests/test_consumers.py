@@ -131,3 +131,33 @@ async def test_matchmaking_consumer_ignores_other_users() -> None:
 
     assert await comm.receive_nothing(timeout=0.5)
     await comm.disconnect()
+
+
+@pytest.mark.asyncio
+async def test_signin_consumer_receives_redeemed_event() -> None:
+    """The check-email page subscribes to /ws/signin/<token_id>/ and gets
+    the empty wake-up payload when the magic link is redeemed."""
+    comm = WebsocketCommunicator(application, "/ws/signin/77/")
+    connected, _ = await comm.connect()
+    assert connected
+
+    channel_layer = get_channel_layer()
+    await channel_layer.group_send("signin_77", {"type": "signin_redeemed", "payload": {}})
+
+    msg = await comm.receive_json_from()
+    assert msg == {"type": "signin_redeemed", "payload": {}}
+
+    await comm.disconnect()
+
+
+@pytest.mark.asyncio
+async def test_signin_consumer_ignores_other_tokens() -> None:
+    comm = WebsocketCommunicator(application, "/ws/signin/77/")
+    connected, _ = await comm.connect()
+    assert connected
+
+    channel_layer = get_channel_layer()
+    await channel_layer.group_send("signin_78", {"type": "signin_redeemed", "payload": {}})
+
+    assert await comm.receive_nothing(timeout=0.5)
+    await comm.disconnect()

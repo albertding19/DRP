@@ -23,7 +23,7 @@ from __future__ import annotations
 
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 
-from .groups import FEED_GROUP, matchmaking_group, post_group
+from .groups import FEED_GROUP, matchmaking_group, post_group, signin_group
 
 
 class FeedConsumer(AsyncJsonWebsocketConsumer):
@@ -119,3 +119,37 @@ class MatchmakingConsumer(AsyncJsonWebsocketConsumer):
 
     async def booking_cancelled(self, event: dict) -> None:
         await self.send_json({"type": "booking_cancelled", "payload": event["payload"]})
+
+
+class SignInConsumer(AsyncJsonWebsocketConsumer):
+    """Per-magic-link channel for the check-email page.
+
+    The browser that requested a sign-in / claim / email-change link
+    connects to `/ws/signin/<token_id>/` and receives one event type —
+    `signin_redeemed` — the instant the link is clicked anywhere (other
+    tab, other device). The poll on the same page stays as the fallback.
+
+    Authorisation: trusts the URL kwarg, like `MatchmakingConsumer`.
+    Token pks are guessable ints, so the event deliberately carries NO
+    payload — the page re-checks state via the session-gated poll
+    endpoint rather than trusting the push. A snooper on someone else's
+    group learns only that some token got redeemed.
+    """
+
+    async def connect(self) -> None:
+        try:
+            self.token_id = int(self.scope["url_route"]["kwargs"]["token_id"])
+        except (KeyError, ValueError, TypeError):
+            await self.close(code=4000)
+            return
+        self.group = signin_group(self.token_id)
+        await self.channel_layer.group_add(self.group, self.channel_name)
+        await self.accept()
+
+    async def disconnect(self, code: int) -> None:  # noqa: ARG002
+        group = getattr(self, "group", None)
+        if group:
+            await self.channel_layer.group_discard(group, self.channel_name)
+
+    async def signin_redeemed(self, event: dict) -> None:
+        await self.send_json({"type": "signin_redeemed", "payload": event["payload"]})
