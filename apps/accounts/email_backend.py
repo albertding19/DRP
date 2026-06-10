@@ -67,10 +67,24 @@ class ResendHTTPEmailBackend(BaseEmailBackend):
                 payload["bcc"] = list(msg.bcc)
             try:
                 resp = requests.post(_API_URL, json=payload, headers=headers, timeout=_TIMEOUT_S)
-                resp.raise_for_status()
-                sent += 1
             except Exception as exc:
                 if not self.fail_silently:
                     raise
                 logger.exception("Resend HTTP send failed: %s", exc)
+                continue
+            if resp.status_code >= 400:
+                # Resend's response body says WHY (sandbox-recipient
+                # restriction, unverified domain, bad from address — all
+                # arrive as 403). A bare raise_for_status() only carries
+                # the status code, which made these undiagnosable from
+                # the logs.
+                detail = (
+                    f"Resend API {resp.status_code} sending from {msg.from_email!r}: "
+                    + (resp.text or "")[:500]
+                )
+                if not self.fail_silently:
+                    raise RuntimeError(detail)
+                logger.error(detail)
+                continue
+            sent += 1
         return sent
