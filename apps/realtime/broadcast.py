@@ -96,12 +96,13 @@ def broadcast_match_found(*, notify_user_id: int, session) -> None:  # noqa: ANN
     """Push a `match_found` event to `notify_user_id`'s matchmaking group.
 
     Used by body-double services when a waiting user gets paired with
-    someone who just entered the pool. The receiving WS client redirects
-    to the call page.
+    someone who just entered the pool — and when a scheduled booking's
+    partner joins first and creates the room. The receiving WS client
+    redirects (or flips its panel) to the call page.
 
     `notify_user_id` is intentionally the partner — the user who just
-    enqueued is about to be redirected by their own POST response, so
-    they don't need a WS push.
+    enqueued / joined is about to be redirected by their own POST
+    response, so they don't need a WS push.
     """
     from .groups import matchmaking_group
 
@@ -112,4 +113,39 @@ def broadcast_match_found(*, notify_user_id: int, session) -> None:  # noqa: ANN
             "session_id": session.id,
             "room_url": f"/body-double/room/{session.id}/",
         },
+    )
+
+
+def broadcast_booking_matched(*, notify_user_id: int, booking) -> None:  # noqa: ANN001
+    """Push a `booking_matched` event when a user's open scheduled
+    booking gets paired. `booking` is the RECIPIENT's row (already
+    matched, agreed window set). No room exists yet — the schedule page
+    just refreshes its state."""
+    from .groups import matchmaking_group
+
+    partner = booking.matched_with
+    _send(
+        matchmaking_group(notify_user_id),
+        "booking_matched",
+        {
+            "booking_id": booking.id,
+            "agreed_start_at": booking.agreed_start_at.isoformat()
+            if booking.agreed_start_at
+            else None,
+            "agreed_end_at": booking.agreed_end_at.isoformat() if booking.agreed_end_at else None,
+            "partner_nickname": partner.user.nickname if partner else "",
+        },
+    )
+
+
+def broadcast_booking_cancelled(*, notify_user_id: int, booking_id: int) -> None:
+    """Push a `booking_cancelled` event when a user's matched partner
+    cancels and their booking re-opens. The schedule page refreshes; a
+    `booking_matched` may follow immediately if the matcher re-paired."""
+    from .groups import matchmaking_group
+
+    _send(
+        matchmaking_group(notify_user_id),
+        "booking_cancelled",
+        {"booking_id": booking_id},
     )

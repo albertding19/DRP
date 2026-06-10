@@ -75,6 +75,16 @@
           <form method="post" action="{% url 'body_double:leave' %}" style="display:inline; margin-left:0.5rem;">
             {% csrf_token %}<button class="btn btn-danger">Cancel</button>
           </form>
+        {% elif body_double_panel.state == "upcoming" %}
+          <p class="upcoming-line">
+            🗓 Booked for <strong>{{ body_double_panel.start_at|date:"D H:i" }}</strong>
+            {% if body_double_panel.matched %}
+              with <strong>{{ body_double_panel.partner_nickname }}</strong>
+            {% else %}
+              <span class="muted small">— finding a partner</span>
+            {% endif %}
+          </p>
+          <a class="btn btn-secondary" href="{% url 'body_double:schedule' %}">View schedule →</a>
         {% else %}
           <form method="post" action="{% url 'body_double:find' %}">
             {% csrf_token %}<button class="btn btn-primary">Find me someone</button>
@@ -254,6 +264,7 @@
 
   .panel-footer { margin-top: 0.5rem; font-size: 0.85rem; color: var(--fg-muted); }
   .panel-footer a { color: var(--accent); text-decoration: none; }
+  .upcoming-line { margin: 0 0 0.6rem; }
 
   .new-posts-pill {
     display: inline-block;

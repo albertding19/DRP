@@ -189,17 +189,26 @@ MODERATION_CLAUDE_TIMEOUT_S = env.float("MODERATION_CLAUDE_TIMEOUT_S", default=3
 # ---------------------------------------------------------------------------
 # Body-double matchmaking
 # ---------------------------------------------------------------------------
-# Pluggable matching strategy. Default is the preference-aware matcher
-# that respects each ticket's chattiness / work_mode / duration prefs.
+# Pluggable matching strategy. Default is the timetable-aware matcher:
+# preference matching (chattiness / work_mode / duration) plus a check
+# that the candidate's tasks timetable shows enough free time for the
+# session (soft — dropped at the last phase; empty timetable = free).
 # Alternatives (set the env to one of these dotted paths to swap):
+#   apps.body_double.matching.preferences.PreferenceMatchingStrategy
+#       — the previous default; preference-aware but timetable-blind.
 #   apps.body_double.matching.community.CommunityFallbackStrategy
-#       — the previous default; community-aware but ignores prefs.
+#       — community-aware but ignores prefs.
 #   apps.body_double.matching.fifo.FIFOStrategy
 #       — pure first-in-first-out; ignores everything but wait time.
 BODY_DOUBLE_MATCHING_STRATEGY = env(
     "BODY_DOUBLE_MATCHING_STRATEGY",
-    default="apps.body_double.matching.preferences.PreferenceMatchingStrategy",
+    default="apps.body_double.matching.timetable.TimetableAwareStrategy",
 )
+
+# How many oldest-first candidates a phase will test against per-candidate
+# Python checks (the timetable fit) before giving up on that phase. Bounds
+# the queries a single enqueue can issue inside its transaction.
+BODY_DOUBLE_TIMETABLE_CANDIDATE_CAP = env.int("BODY_DOUBLE_TIMETABLE_CANDIDATE_CAP", default=5)
 
 # Phase progression for PreferenceMatchingStrategy. Each is the partner-
 # wait threshold at which the matcher will start considering a less-
@@ -227,6 +236,17 @@ BODY_DOUBLE_VIDEO_PROVIDER = env(
 # (M3 work) expires it. Configurable so M3/M4 iteration can tune without
 # redeploys.
 BODY_DOUBLE_WAIT_TIMEOUT_S = env.int("BODY_DOUBLE_WAIT_TIMEOUT_S", default=300)
+
+# --- Scheduled bookings ("match me at 15:00") ---
+# Two bookings pair only if their requested windows share at least this
+# many minutes (also the smallest duration choice). An open booking whose
+# remaining window can't fit this expires lazily.
+BODY_DOUBLE_BOOKING_MIN_OVERLAP_MIN = env.int("BODY_DOUBLE_BOOKING_MIN_OVERLAP_MIN", default=15)
+# How early before the agreed start the Join button goes live. The first
+# joiner creates the room and waits there — the room is the lobby.
+BODY_DOUBLE_BOOKING_JOIN_EARLY_S = env.int("BODY_DOUBLE_BOOKING_JOIN_EARLY_S", default=300)
+# How far ahead a booking may be placed.
+BODY_DOUBLE_BOOKING_HORIZON_DAYS = env.int("BODY_DOUBLE_BOOKING_HORIZON_DAYS", default=14)
 
 # LiveKit Cloud credentials. The three values are obtained from
 # cloud.livekit.io after creating a project. Empty defaults mean local
@@ -261,9 +281,12 @@ TASKS_BREAK_COOLDOWN_S = env.int("TASKS_BREAK_COOLDOWN_S", default=60)
 RESEND_API_KEY = env("RESEND_API_KEY", default="")
 
 # The address magic-link emails come from. Must be a domain verified in
-# the Resend dashboard for production deliverability; the `onboarding@resend.dev`
-# default is Resend's shared-demo sender and works for early prototypes
-# but lands in spam more often. See README "Email setup" for the domain-
+# the Resend dashboard: the `onboarding@resend.dev` default is Resend's
+# SANDBOX sender, which can ONLY deliver to the Resend account owner's
+# own address — sends to anyone else are rejected with a 403 (surfaced to
+# the user as "couldn't send the email", logged as EmailDeliveryError).
+# That's why login to the owner's mailbox works while claim/email-change
+# for other users fails. See README "Email setup" for the domain-
 # verification steps.
 DEFAULT_FROM_EMAIL = env(
     "DEFAULT_FROM_EMAIL",

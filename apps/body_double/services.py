@@ -1,11 +1,12 @@
-"""Body-double services — pool enqueue, cancel, session end.
+"""Body-double services — pool enqueue, scheduled bookings, session end.
 
-This module orchestrates the matchmaking flow but never touches the
+This module orchestrates the matchmaking flows but never touches the
 LiveKit SDK or the channel layer directly. It delegates:
 
-  - matching logic → `settings.BODY_DOUBLE_MATCHING_STRATEGY` (Protocol)
+  - live matching → `settings.BODY_DOUBLE_MATCHING_STRATEGY` (Protocol)
+  - booking matching → `apps.body_double.matching.scheduled`
   - video provider → `settings.BODY_DOUBLE_VIDEO_PROVIDER` (Protocol)
-  - WS broadcast → `apps.realtime.broadcast.broadcast_match_found`
+  - WS broadcast → `apps.realtime.broadcast.broadcast_*`
 
 so each pluggable extension point can be swapped via Django settings
 without changes here.
@@ -15,22 +16,33 @@ Race control: all of `enqueue` runs inside `transaction.atomic` with
 on an empty pool serialise into one becoming the partner of the other.
 A user who double-clicks "Find a body double" hits the partial-unique
 constraint on `PoolTicket` and gets `AlreadyInPoolError`.
+
+Bookings have no DB uniqueness to lean on (a user may hold several), so
+`book` / `cancel_booking` / `activate_booking` serialise on
+`select_for_update` over the affected rows instead — pairs are always
+locked in pk order so concurrent Join + Cancel can't deadlock. There is
+NO background scheduler: bookings expire lazily on read paths
+(`expire_stale_bookings`), and the session room is created by whichever
+participant joins first (`activate_booking`).
 """
 
 from __future__ import annotations
 
 import contextlib
+from datetime import timedelta
 from uuid import uuid4
 
 from django.conf import settings
 from django.db import IntegrityError, transaction
+from django.db.models import DateTimeField, ExpressionWrapper, F
 from django.utils import timezone
 from django.utils.module_loading import import_string
 
 from apps.realtime import broadcast
 
 from .matching.base import MatchingStrategy
-from .models import BodyDoubleSession, PoolTicket
+from .matching.scheduled import find_booking_match, overlap_window
+from .models import BodyDoubleSession, PoolTicket, ScheduledBooking
 from .video.base import VideoProvider
 
 
@@ -41,6 +53,26 @@ class AlreadyInPoolError(Exception):
 
 class NotInSessionError(Exception):
     """Raised when ending a session the requesting user isn't part of."""
+
+
+class InvalidBookingTimeError(Exception):
+    """Raised when a booking's start time is in the past or beyond the
+    booking horizon."""
+
+
+class OverlappingBookingError(Exception):
+    """Raised when a new booking would overlap one of the user's own
+    active bookings."""
+
+
+class BookingNotJoinableError(Exception):
+    """Raised when joining a booking outside its join window, or one
+    that isn't matched yet."""
+
+
+class BookingNotCancellableError(Exception):
+    """Raised when cancelling a booking whose session already exists —
+    end it from the room instead."""
 
 
 def _strategy() -> MatchingStrategy:
@@ -184,6 +216,12 @@ def end_session(*, session: BodyDoubleSession, user) -> None:  # type: ignore[no
     PoolTicket.objects.filter(session=session, status=PoolTicket.STATUS_MATCHED).update(
         status=PoolTicket.STATUS_COMPLETED, updated_at=timezone.now()
     )
+    # Same for scheduled bookings — sessions born from a booking carry
+    # the bookings FK'd to them. Also covers the no-show case: the lone
+    # joiner ends the empty session and both bookings retire.
+    ScheduledBooking.objects.filter(session=session, status=ScheduledBooking.STATUS_MATCHED).update(
+        status=ScheduledBooking.STATUS_COMPLETED, updated_at=timezone.now()
+    )
 
     # Best-effort: ask the provider to tear down. LiveKit auto-cleans
     # empty rooms, so this is a no-op there; other providers may need it.
@@ -200,3 +238,285 @@ def get_active_ticket(*, user) -> PoolTicket | None:  # type: ignore[no-untyped-
         .order_by("-created_at")
         .first()
     )
+
+
+# ---------------------------------------------------------------------------
+# Scheduled bookings
+# ---------------------------------------------------------------------------
+def _mark_pair_matched(
+    booking: ScheduledBooking, partner: ScheduledBooking
+) -> tuple[ScheduledBooking, ScheduledBooking]:
+    """Transition `booking` + `partner` OPEN → MATCHED with cross-refs and
+    the agreed overlap window on both rows. Returns the refreshed pair."""
+    agreed_start, agreed_end = overlap_window(booking, partner)
+    now = timezone.now()
+    ScheduledBooking.objects.filter(pk=booking.pk).update(
+        status=ScheduledBooking.STATUS_MATCHED,
+        matched_with=partner,
+        agreed_start_at=agreed_start,
+        agreed_end_at=agreed_end,
+        updated_at=now,
+    )
+    ScheduledBooking.objects.filter(pk=partner.pk).update(
+        status=ScheduledBooking.STATUS_MATCHED,
+        matched_with=booking,
+        agreed_start_at=agreed_start,
+        agreed_end_at=agreed_end,
+        updated_at=now,
+    )
+    booking.refresh_from_db()
+    partner.refresh_from_db()
+    return booking, partner
+
+
+@transaction.atomic
+def book(  # type: ignore[no-untyped-def]
+    *,
+    user,
+    start_at,
+    duration_minutes: int = 30,
+    chattiness: str = PoolTicket.CHATTINESS_FLEXIBLE,
+    work_mode: str = PoolTicket.WORK_MODE_ANY,
+    community=None,
+) -> tuple[ScheduledBooking, ScheduledBooking | None]:
+    """Create a scheduled booking and try to match it immediately.
+
+    Returns `(booking, partner_booking)` — `partner_booking` is non-None
+    if an overlapping compatible booking was waiting. Matching creates NO
+    session yet; the room is created by whoever joins first inside the
+    join window (`activate_booking`).
+
+    Side effect on match: the partner user gets a `booking_matched` WS
+    event. The booker learns from their own POST response.
+
+    Raises:
+      InvalidBookingTimeError — start in the past / beyond the horizon.
+      OverlappingBookingError — clashes with the user's own active booking.
+    """
+    now = timezone.now()
+    if start_at <= now:
+        raise InvalidBookingTimeError("Pick a time in the future.")
+    horizon = now + timedelta(days=settings.BODY_DOUBLE_BOOKING_HORIZON_DAYS)
+    if start_at > horizon:
+        raise InvalidBookingTimeError(
+            f"Bookings open up to {settings.BODY_DOUBLE_BOOKING_HORIZON_DAYS} days ahead."
+        )
+
+    end_at = start_at + timedelta(minutes=duration_minutes)
+    # Self-overlap guard. No DB exclusion constraint (needs btree_gist),
+    # so lock the user's own active bookings and check in Python — the
+    # same accepted select_for_update trade-off as the rest of the app.
+    mine = ScheduledBooking.objects.select_for_update().filter(
+        user=user,
+        status__in=ScheduledBooking.ACTIVE_STATUSES,
+        start_at__lt=end_at,
+    )
+    for other in mine:
+        if other.end_at > start_at:
+            raise OverlappingBookingError("You already have a booking overlapping that time.")
+
+    booking = ScheduledBooking.objects.create(
+        user=user,
+        community=community,
+        start_at=start_at,
+        duration_minutes=duration_minutes,
+        chattiness=chattiness,
+        work_mode=work_mode,
+        status=ScheduledBooking.STATUS_OPEN,
+    )
+
+    partner = find_booking_match(booking)
+    if partner is None:
+        return booking, None
+
+    booking, partner = _mark_pair_matched(booking, partner)
+    broadcast.broadcast_booking_matched(notify_user_id=partner.user_id, booking=partner)
+    return booking, partner
+
+
+@transaction.atomic
+def cancel_booking(*, booking: ScheduledBooking) -> None:
+    """Cancel `booking`. Idempotent on terminal states.
+
+    If the booking was matched (but the session doesn't exist yet), the
+    partner's booking is re-opened and immediately re-run through the
+    matcher — they may instantly re-pair with another open booking. The
+    partner gets a `booking_cancelled` WS event either way (and a
+    `booking_matched` one on instant re-pair).
+
+    Raises:
+      BookingNotCancellableError — the session already exists; the room's
+        End button is the way out.
+    """
+    # Lock the pair in pk order — the same order activate_booking uses,
+    # so a concurrent Join can't deadlock with a Cancel.
+    pair_ids = [booking.pk]
+    if booking.matched_with_id is not None:
+        pair_ids.append(booking.matched_with_id)
+    rows = {
+        row.pk: row
+        for row in ScheduledBooking.objects.select_for_update().filter(pk__in=sorted(pair_ids))
+    }
+    mine = rows[booking.pk]
+
+    if mine.status not in ScheduledBooking.ACTIVE_STATUSES:
+        return  # idempotent
+    if mine.session_id is not None:
+        raise BookingNotCancellableError("The session has started — end it from the room.")
+
+    now = timezone.now()
+    mine.status = ScheduledBooking.STATUS_CANCELLED
+    mine.save(update_fields=["status", "updated_at"])
+
+    partner = rows.get(mine.matched_with_id) if mine.matched_with_id else None
+    if partner is None or partner.status != ScheduledBooking.STATUS_MATCHED:
+        return
+
+    # Re-open the partner's booking: clear the pairing, keep their ask.
+    partner.status = ScheduledBooking.STATUS_OPEN
+    partner.matched_with = None
+    partner.agreed_start_at = None
+    partner.agreed_end_at = None
+    partner.save(
+        update_fields=["status", "matched_with", "agreed_start_at", "agreed_end_at", "updated_at"]
+    )
+    broadcast.broadcast_booking_cancelled(notify_user_id=partner.user_id, booking_id=partner.pk)
+
+    # Give them another shot right now — another open booking may fit.
+    # Skip if their own window can no longer hold the minimum overlap.
+    min_overlap = timedelta(minutes=settings.BODY_DOUBLE_BOOKING_MIN_OVERLAP_MIN)
+    if partner.end_at - min_overlap <= now:
+        partner.status = ScheduledBooking.STATUS_EXPIRED
+        partner.save(update_fields=["status", "updated_at"])
+        return
+    rematch = find_booking_match(partner)
+    if rematch is not None:
+        partner, rematch = _mark_pair_matched(partner, rematch)
+        # Unlike `book`, nobody's POST response carries the news — both
+        # users learn over WS (or the schedule page's poll).
+        broadcast.broadcast_booking_matched(notify_user_id=partner.user_id, booking=partner)
+        broadcast.broadcast_booking_matched(notify_user_id=rematch.user_id, booking=rematch)
+
+
+@transaction.atomic
+def activate_booking(*, booking: ScheduledBooking, user) -> BodyDoubleSession:  # type: ignore[no-untyped-def]
+    """First Join inside the window creates the session + room; every
+    later Join (including the partner's, and double-clicks) returns the
+    same session. The booking analogue of `enqueue`'s match block.
+
+    Side effect on first join: the PARTNER gets the existing
+    `match_found` WS event — their dashboard/schedule page flips to
+    "Rejoin your room" through the same handler live matches use.
+
+    Raises:
+      BookingNotJoinableError — not matched, or outside the join window.
+    """
+    pair_ids = [booking.pk]
+    if booking.matched_with_id is not None:
+        pair_ids.append(booking.matched_with_id)
+    rows = {
+        row.pk: row
+        for row in ScheduledBooking.objects.select_for_update().filter(pk__in=sorted(pair_ids))
+    }
+    mine = rows[booking.pk]
+
+    if mine.session_id is not None:
+        return BodyDoubleSession.objects.get(pk=mine.session_id)
+    if mine.status != ScheduledBooking.STATUS_MATCHED or mine.matched_with_id is None:
+        raise BookingNotJoinableError("This booking doesn't have a partner yet.")
+
+    now = timezone.now()
+    join_opens = mine.agreed_start_at - timedelta(seconds=settings.BODY_DOUBLE_BOOKING_JOIN_EARLY_S)
+    if now < join_opens:
+        raise BookingNotJoinableError("The session hasn't opened yet — come back nearer the time.")
+    if now >= mine.agreed_end_at:
+        raise BookingNotJoinableError("This session's window has passed.")
+
+    partner = rows[mine.matched_with_id]
+
+    room_id = uuid4().hex
+    _video_provider().create_room(room_id=room_id, max_participants=2)
+
+    agreed_minutes = int((mine.agreed_end_at - mine.agreed_start_at).total_seconds() // 60)
+    session = BodyDoubleSession.objects.create(
+        room_id=room_id,
+        user_a=partner.user,
+        user_b=user,
+        status=BodyDoubleSession.STATUS_ACTIVE,
+        agreed_duration_minutes=agreed_minutes,
+    )
+    ScheduledBooking.objects.filter(pk__in=[mine.pk, partner.pk]).update(
+        session=session, updated_at=now
+    )
+
+    broadcast.broadcast_match_found(notify_user_id=partner.user_id, session=session)
+    return session
+
+
+@transaction.atomic
+def expire_stale_bookings(*, user) -> int:  # type: ignore[no-untyped-def]
+    """Lazily retire `user`'s bookings whose moment has passed. Called at
+    the top of booking read paths — there is no background job.
+
+      open    + window can no longer fit the minimum overlap → expired
+      matched + agreed window over, session never created     → BOTH expired
+
+    Returns the number of rows expired.
+    """
+    now = timezone.now()
+    min_overlap = timedelta(minutes=settings.BODY_DOUBLE_BOOKING_MIN_OVERLAP_MIN)
+
+    requested_end = ExpressionWrapper(
+        F("start_at") + timedelta(minutes=1) * F("duration_minutes"),
+        output_field=DateTimeField(),
+    )
+    expired = (
+        ScheduledBooking.objects.filter(user=user, status=ScheduledBooking.STATUS_OPEN)
+        .annotate(requested_end=requested_end)
+        .filter(requested_end__lte=now + min_overlap)
+        .update(status=ScheduledBooking.STATUS_EXPIRED, updated_at=now)
+    )
+
+    no_shows = ScheduledBooking.objects.filter(
+        user=user,
+        status=ScheduledBooking.STATUS_MATCHED,
+        session__isnull=True,
+        agreed_end_at__lte=now,
+    )
+    for mine in no_shows:
+        # Re-lock the pair in pk order and re-check, same discipline as
+        # cancel/activate, since the partner row belongs to another user.
+        pair_ids = sorted(pk for pk in [mine.pk, mine.matched_with_id] if pk is not None)
+        rows = list(ScheduledBooking.objects.select_for_update().filter(pk__in=pair_ids))
+        for row in rows:
+            if (
+                row.status == ScheduledBooking.STATUS_MATCHED
+                and row.session_id is None
+                and row.agreed_end_at is not None
+                and row.agreed_end_at <= now
+            ):
+                row.status = ScheduledBooking.STATUS_EXPIRED
+                row.save(update_fields=["status", "updated_at"])
+                expired += 1
+    return expired
+
+
+def upcoming_bookings(*, user) -> list[ScheduledBooking]:  # type: ignore[no-untyped-def]
+    """The user's active bookings, soonest first, after a lazy expiry
+    sweep. `matched_with__user` is select_related for partner nicknames."""
+    expire_stale_bookings(user=user)
+    return list(
+        ScheduledBooking.objects.filter(user=user, status__in=ScheduledBooking.ACTIVE_STATUSES)
+        .select_related("matched_with__user", "community")
+        .order_by("start_at")
+    )
+
+
+def booking_busy_intervals(*, user, window_start, window_end) -> list[tuple]:  # type: ignore[no-untyped-def]
+    """Read-only seam for the tasks app: the user's active bookings as
+    (start, end) tuples clipped-relevant to the window, so `auto_plan`
+    can route tasks around booked sessions without materialised
+    BusyBlocks to keep in sync."""
+    from .availability import booking_intervals
+
+    return [(iv.start, iv.end) for iv in booking_intervals(user, window_start, window_end)]

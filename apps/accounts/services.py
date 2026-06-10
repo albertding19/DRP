@@ -68,6 +68,12 @@ class EmailTakenError(Exception):
     """That email is already attached to a different user account."""
 
 
+class EmailDeliveryError(Exception):
+    """The verification email could not be sent (provider rejected it or
+    the network call failed). The token row is rolled back with the
+    transaction, so the user can simply retry."""
+
+
 class OAuthError(Exception):
     """Wrap any non-2xx response from Google OR a state-mismatch on callback."""
 
@@ -242,14 +248,26 @@ def send_signin_link(
     except Exception:  # template may not exist for every intent — txt is enough
         body_html = None
 
-    send_mail(
-        subject=subject_by_intent.get(intent, "Your link for unmasked"),
-        message=body_txt,
-        from_email=settings.DEFAULT_FROM_EMAIL,
-        recipient_list=[email],
-        html_message=body_html,
-        fail_silently=False,
-    )
+    # A failed send must NOT 500 the calling view. The Resend backend
+    # raises on any non-2xx (e.g. the sandbox sender refuses recipients
+    # other than the Resend account owner); wrap it in a typed error the
+    # views catch like RateLimitedError. Raising aborts this atomic block,
+    # so the token row above is rolled back and a retry starts clean.
+    try:
+        send_mail(
+            subject=subject_by_intent.get(intent, "Your link for unmasked"),
+            message=body_txt,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[email],
+            html_message=body_html,
+            fail_silently=False,
+        )
+    except Exception as exc:
+        logger.exception(
+            "signin email send failed",
+            extra={"intent": intent, "email": email},
+        )
+        raise EmailDeliveryError(str(exc)) from exc
     logger.info(
         "signin_token issued",
         extra={"intent": intent, "email": email, "ip": ip_address},
@@ -491,6 +509,7 @@ __all__ = [
     "SignInTokenExpiredError",
     "RateLimitedError",
     "EmailTakenError",
+    "EmailDeliveryError",
     "OAuthError",
     "create_user_with_nickname",
     "send_signin_link",

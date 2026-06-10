@@ -133,6 +133,46 @@ class TestBodyDoublePanel:
         assert b"Rejoin your room" in body
         assert f"/body-double/room/{session.id}/".encode() in body
 
+    def test_upcoming_state_shows_booking(self) -> None:
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        from apps.body_double.models import ScheduledBooking
+
+        client, user = _authed("bd4")
+        ScheduledBooking.objects.create(
+            user=user,
+            start_at=timezone.now() + timedelta(hours=3),
+            duration_minutes=30,
+            status=ScheduledBooking.STATUS_OPEN,
+        )
+        r = client.get("/")
+        body = r.content
+        assert b"Booked for" in body
+        assert b"View schedule" in body
+        assert b"Find me someone" not in body
+
+    def test_live_ticket_outranks_upcoming_booking(self) -> None:
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        from apps.body_double.models import ScheduledBooking
+
+        client, user = _authed("bd5")
+        PoolTicket.objects.create(user=user, status=PoolTicket.STATUS_WAITING)
+        ScheduledBooking.objects.create(
+            user=user,
+            start_at=timezone.now() + timedelta(hours=3),
+            duration_minutes=30,
+            status=ScheduledBooking.STATUS_OPEN,
+        )
+        r = client.get("/")
+        body = r.content
+        assert b"Resume waiting" in body
+        assert b"Booked for" not in body
+
 
 @pytest.mark.django_db
 class TestCommunitiesPanel:

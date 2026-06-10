@@ -1,12 +1,20 @@
-"""Body-double views — landing, find/cancel, waiting, room, end.
+"""Body-double views — landing, find/cancel, waiting, room, end, and the
+scheduled-booking pages.
 
-The flow:
+The live flow:
   GET  /body-double/                       → landing CTA
   POST /body-double/find/                  → enqueue; redirect to room or waiting
   GET  /body-double/waiting/               → waiting page (WS-driven redirect)
   GET  /body-double/room/<int:session_id>/ → call page (issues LiveKit token)
   POST /body-double/leave/                 → cancel waiting ticket
   POST /body-double/sessions/<int>/end/    → mark session ended
+
+The booking flow:
+  GET  /body-double/schedule/                  → booking form + upcoming list
+  POST /body-double/schedule/book/             → create booking (matches eagerly)
+  GET  /body-double/schedule/status/           → JSON poll fallback
+  POST /body-double/bookings/<int>/cancel/     → cancel a booking
+  POST /body-double/bookings/<int>/join/       → first join creates the room
 
 Most views require a logged-in user; the auth middleware already redirects
 anonymous visits to the nickname picker, so we use `@login_required` for
@@ -15,22 +23,34 @@ clarity but the middleware is the real enforcer.
 
 from __future__ import annotations
 
+import contextlib
+from datetime import datetime, timedelta
+
 from django.conf import settings
 from django.contrib.auth.decorators import login_required
-from django.http import HttpRequest, HttpResponse, JsonResponse
+from django.http import Http404, HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.utils import timezone
 from django.utils.module_loading import import_string
 from django.views.decorators.http import require_GET, require_POST
 
-from .models import BodyDoubleSession, PoolTicket
+from .models import BodyDoubleSession, PoolTicket, ScheduledBooking
 from .services import (
     AlreadyInPoolError,
+    BookingNotCancellableError,
+    BookingNotJoinableError,
+    InvalidBookingTimeError,
     NotInSessionError,
+    OverlappingBookingError,
+    activate_booking,
+    book,
+    cancel_booking,
     cancel_waiting,
     end_session,
     enqueue,
     get_active_ticket,
+    upcoming_bookings,
 )
 
 
@@ -191,8 +211,6 @@ def room(request: HttpRequest, session_id: int) -> HttpResponse:
     if not session.includes(request.user):
         # Treat as 404 rather than 403 to avoid confirming the existence
         # of sessions the user isn't part of.
-        from django.http import Http404
-
         raise Http404("No such session.")
     if session.status != BodyDoubleSession.STATUS_ACTIVE:
         # Session has already ended; route back to landing.
@@ -230,7 +248,198 @@ def end(request: HttpRequest, session_id: int) -> HttpResponse:
     try:
         end_session(session=session, user=request.user)
     except NotInSessionError:
-        from django.http import Http404
-
         raise Http404("No such session.") from None
     return redirect("body_double:index")
+
+
+# ---------------------------------------------------------------------------
+# Scheduled bookings
+# ---------------------------------------------------------------------------
+def _booking_states(bookings: list[ScheduledBooking]) -> list[dict]:
+    """Annotate bookings with the display/join state the template and the
+    status poll both need. One source of truth for "joinable"."""
+    now = timezone.now()
+    early = timedelta(seconds=settings.BODY_DOUBLE_BOOKING_JOIN_EARLY_S)
+    rows = []
+    for b in bookings:
+        live = b.session_id is not None
+        joinable = live or (
+            b.status == ScheduledBooking.STATUS_MATCHED
+            and b.agreed_start_at is not None
+            and b.agreed_start_at - early <= now < b.agreed_end_at
+        )
+        rows.append(
+            {
+                "booking": b,
+                "live": live,
+                "joinable": joinable,
+                "join_opens_at": (b.agreed_start_at - early) if b.agreed_start_at else None,
+                "partner_nickname": (b.matched_with.user.nickname if b.matched_with_id else None),
+            }
+        )
+    return rows
+
+
+def _schedule_context(request: HttpRequest, *, book_error=None, book_initial=None) -> dict:
+    """Context for the schedule page — also used to re-render it with a
+    form error after a rejected POST."""
+    from apps.communities.services import user_communities
+
+    from .availability import availability_for
+
+    bookings = upcoming_bookings(user=request.user)
+
+    # Free-time hints for today, derived from the tasks timetable. Pure
+    # suggestion — booking a clashing time is allowed.
+    now_local = timezone.localtime()
+    work_end = now_local.replace(
+        hour=settings.TASKS_WORK_END_HOUR, minute=0, second=0, microsecond=0
+    )
+    free_today = []
+    if now_local < work_end:
+        min_overlap = settings.BODY_DOUBLE_BOOKING_MIN_OVERLAP_MIN
+        free_today = [
+            slot
+            for slot in availability_for(request.user, window_start=now_local, window_end=work_end)
+            if slot.length_minutes >= min_overlap
+        ]
+
+    # Bookings that just expired unmatched get a "try the live pool" CTA.
+    recently_expired = list(
+        ScheduledBooking.objects.filter(
+            user=request.user,
+            status=ScheduledBooking.STATUS_EXPIRED,
+            updated_at__gte=timezone.now() - timedelta(minutes=30),
+        ).order_by("-updated_at")[:3]
+    )
+
+    return {
+        "booking_rows": _booking_states(bookings),
+        "free_today": free_today,
+        "recently_expired": recently_expired,
+        "user_communities": user_communities(request.user),
+        "book_error": book_error,
+        "book_initial": book_initial
+        or {"date": now_local.date().isoformat(), "time": "", "duration_minutes": 30},
+        "join_early_min": settings.BODY_DOUBLE_BOOKING_JOIN_EARLY_S // 60,
+    }
+
+
+@login_required
+@require_GET
+def schedule(request: HttpRequest) -> HttpResponse:
+    """Booking form + the user's upcoming scheduled sessions."""
+    return render(request, "body_double/schedule.html", _schedule_context(request))
+
+
+@login_required
+@require_POST
+def book_view(request: HttpRequest) -> HttpResponse:
+    """Create a scheduled booking from the form.
+
+    Preference fields fall back silently like `find` — but the START TIME
+    is the point of this feature, so an unparseable or invalid time
+    re-renders the form with an error instead of guessing.
+    """
+    try:
+        duration = int(request.POST.get("duration_minutes") or 30)
+    except (TypeError, ValueError):
+        duration = 30
+    if duration not in _VALID_DURATIONS:
+        duration = 30
+
+    chattiness = (request.POST.get("chattiness") or "").strip()
+    if chattiness not in _VALID_CHATTINESS:
+        chattiness = PoolTicket.CHATTINESS_FLEXIBLE
+
+    work_mode = (request.POST.get("work_mode") or "").strip()
+    if work_mode not in _VALID_WORK_MODES:
+        work_mode = PoolTicket.WORK_MODE_ANY
+
+    community = None
+    slug = (request.POST.get("community") or "").strip()
+    if slug:
+        from apps.communities.models import Community
+
+        community = Community.objects.filter(slug=slug).first()
+
+    date_str = (request.POST.get("date") or "").strip()
+    time_str = (request.POST.get("time") or "").strip()
+    initial = {"date": date_str, "time": time_str, "duration_minutes": duration}
+
+    def _form_error(message: str) -> HttpResponse:
+        return render(
+            request,
+            "body_double/schedule.html",
+            _schedule_context(request, book_error=message, book_initial=initial),
+            status=400,
+        )
+
+    try:
+        naive = datetime.strptime(f"{date_str} {time_str}", "%Y-%m-%d %H:%M")
+    except ValueError:
+        return _form_error("Pick a date and time for your session.")
+    start_at = timezone.make_aware(naive)
+
+    try:
+        _booking, partner = book(
+            user=request.user,
+            start_at=start_at,
+            duration_minutes=duration,
+            chattiness=chattiness,
+            work_mode=work_mode,
+            community=community,
+        )
+    except (InvalidBookingTimeError, OverlappingBookingError) as exc:
+        return _form_error(str(exc))
+
+    return redirect("body_double:schedule")
+
+
+@login_required
+@require_POST
+def booking_cancel(request: HttpRequest, booking_id: int) -> HttpResponse:
+    """Cancel one of the user's bookings. 404 for other users' bookings."""
+    booking = get_object_or_404(ScheduledBooking, pk=booking_id, user=request.user)
+    # Session already live → not cancellable; the schedule page shows Join.
+    with contextlib.suppress(BookingNotCancellableError):
+        cancel_booking(booking=booking)
+    return redirect("body_double:schedule")
+
+
+@login_required
+@require_POST
+def booking_join(request: HttpRequest, booking_id: int) -> HttpResponse:
+    """Join a matched booking inside its window. First join creates the
+    room; both joins land in it."""
+    booking = get_object_or_404(ScheduledBooking, pk=booking_id, user=request.user)
+    try:
+        session = activate_booking(booking=booking, user=request.user)
+    except BookingNotJoinableError:
+        return redirect("body_double:schedule")
+    return redirect("body_double:room", session_id=session.id)
+
+
+@login_required
+@require_GET
+def schedule_status(request: HttpRequest) -> JsonResponse:
+    """JSON polling fallback for the schedule page — same belt-and-braces
+    role as `status` plays for the waiting page. The client compares the
+    fingerprint and reloads when anything changes."""
+    rows = _booking_states(upcoming_bookings(user=request.user))
+    payload = [
+        {
+            "id": r["booking"].pk,
+            "status": r["booking"].status,
+            "joinable": r["joinable"],
+            "live": r["live"],
+            "room_url": (
+                reverse("body_double:room", kwargs={"session_id": r["booking"].session_id})
+                if r["live"]
+                else None
+            ),
+            "partner": r["partner_nickname"],
+        }
+        for r in rows
+    ]
+    return JsonResponse({"bookings": payload})

@@ -85,12 +85,27 @@ def _today_context(user) -> dict:
             end_at__gt=day_start,
         ).order_by("start_at")
     )
+    # Today's body-double bookings render read-only alongside busy blocks
+    # so the user can see why auto-plan left a gap. Failure-tolerant: the
+    # tasks page must work even if the body-double layer misbehaves.
+    try:
+        from apps.body_double.services import upcoming_bookings
+
+        body_double_bookings = [
+            b
+            for b in upcoming_bookings(user=user)
+            if (b.agreed_start_at or b.start_at) < day_end
+            and (b.agreed_end_at or b.end_at) > day_start
+        ]
+    except Exception:
+        body_double_bookings = []
     return {
         "today": day_start,
         "scheduled": scheduled,
         "backlog": backlog,
         "completed": completed,
         "busy_blocks": busy,
+        "body_double_bookings": body_double_bookings,
         "in_progress_task": in_progress,
         "work_start_hour": settings.TASKS_WORK_START_HOUR,
         "work_end_hour": settings.TASKS_WORK_END_HOUR,

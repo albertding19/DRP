@@ -77,12 +77,17 @@ class _Phase:
     `same_community`: only candidates in the requester's community.
     `same_work_mode`: only candidates whose work_mode is compatible.
     `max_duration_delta`: max |Δduration|. None = no limit.
+    `require_timetable_fit`: only candidates whose timetable shows enough
+        free time (checked per-candidate in Python via `_candidate_ok`,
+        not in SQL). Unused by this strategy; `TimetableAwareStrategy`
+        sets it on its stricter phases.
     """
 
     min_wait_s: int
     same_community: bool
     same_work_mode: bool
     max_duration_delta: int | None
+    require_timetable_fit: bool = False
 
 
 class PreferenceMatchingStrategy:
@@ -123,10 +128,21 @@ class PreferenceMatchingStrategy:
             if phase.min_wait_s > 0:
                 cutoff = now - timedelta(seconds=phase.min_wait_s)
                 qs = qs.filter(created_at__lte=cutoff)
-            partner = qs.order_by("created_at").first()
-            if partner is not None:
-                return partner
+            # Oldest-first, but give subclasses a per-candidate veto
+            # (`_candidate_ok`) for checks that can't be expressed in SQL.
+            # The slice caps how many vetoed candidates we'll step over so
+            # a pathological pool can't stall the enqueue transaction.
+            cap = getattr(settings, "BODY_DOUBLE_TIMETABLE_CANDIDATE_CAP", 5)
+            for candidate in qs.order_by("created_at")[:cap]:
+                if self._candidate_ok(ticket, candidate, phase):
+                    return candidate
         return None
+
+    def _candidate_ok(self, ticket: PoolTicket, candidate: PoolTicket, phase: _Phase) -> bool:
+        """Per-candidate hook for checks SQL can't do. Base strategy
+        accepts everyone — behaviour is identical to the pre-hook
+        `.first()` implementation."""
+        return True
 
     def _phases(self) -> list[_Phase]:
         """The four-phase loosening schedule. Pulled from settings so

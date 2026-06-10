@@ -1,0 +1,365 @@
+{% extends "base.html" %}
+
+{% block title %}Schedule a body double — {{ PROJECT_NAME }}{% endblock %}
+
+{% block content %}
+<section
+  class="body-double-schedule"
+  x-data
+  x-on:ws:booking_matched.window="window.location.reload()"
+  x-on:ws:booking_cancelled.window="window.location.reload()"
+  x-on:ws:match_found.window="
+    /* Partner joined first — the session is live. */
+    if ($event.detail && $event.detail.room_url) {
+      window.location.href = $event.detail.room_url;
+    }
+  "
+>
+  <h1>Schedule a body double</h1>
+  <p class="lead">
+    Pick a time that suits your day and we'll pair you with someone whose
+    plans overlap. Prefer right now? <a href="{% url 'body_double:index' %}">Find someone immediately</a>.
+  </p>
+
+  {% for expired in recently_expired %}
+    <div class="notice notice-expired">
+      No partner found for your {{ expired.start_at|date:"H:i" }} booking.
+      <a href="{% url 'body_double:index' %}">Try the live pool now →</a>
+    </div>
+  {% endfor %}
+
+  {% if booking_rows %}
+    <h2>Your upcoming sessions</h2>
+    <ul class="booking-list" id="booking-list">
+      {% for row in booking_rows %}
+        <li class="booking-row" data-booking-id="{{ row.booking.pk }}">
+          <div class="booking-when">
+            <strong>{{ row.booking.start_at|date:"D j M, H:i" }}</strong>
+            · {{ row.booking.duration_minutes }} min
+            {% if row.booking.community %}· {{ row.booking.community.name }}{% endif %}
+          </div>
+          <div class="booking-state">
+            {% if row.live %}
+              <span class="state-tag state-live">Session live</span>
+              with <strong>{{ row.partner_nickname }}</strong>
+            {% elif row.booking.status == "matched" %}
+              <span class="state-tag state-matched">Matched</span>
+              with <strong>{{ row.partner_nickname }}</strong>
+              — {{ row.booking.agreed_start_at|date:"H:i" }}–{{ row.booking.agreed_end_at|date:"H:i" }}
+            {% else %}
+              <span class="state-tag state-open">Looking for a partner…</span>
+            {% endif %}
+          </div>
+          <div class="booking-actions">
+            {% if row.booking.status == "matched" or row.live %}
+              <form method="post" action="{% url 'body_double:booking_join' row.booking.pk %}" style="display:inline">
+                {% csrf_token %}
+                <button
+                  type="submit"
+                  class="btn btn-primary btn-join"
+                  {% if not row.joinable %}disabled{% endif %}
+                  {% if row.join_opens_at %}data-join-epoch="{{ row.join_opens_at|date:'U' }}"{% endif %}
+                >
+                  {% if row.live %}Rejoin{% else %}Join{% endif %}
+                </button>
+              </form>
+              {% if not row.joinable and not row.live %}
+                <small class="muted">Join opens {{ join_early_min }} min before start.</small>
+              {% endif %}
+            {% endif %}
+            {% if not row.live %}
+              <form method="post" action="{% url 'body_double:booking_cancel' row.booking.pk %}" style="display:inline">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-secondary">Cancel</button>
+              </form>
+            {% endif %}
+          </div>
+        </li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+
+  <h2>Book a slot</h2>
+
+  {% if free_today %}
+    <p class="free-hint">
+      Your timetable says you're free today:
+      {% for slot in free_today %}
+        <span class="free-slot">{{ slot.start|date:"H:i" }}–{{ slot.end|date:"H:i" }}</span>{% if not forloop.last %}, {% endif %}
+      {% endfor %}
+    </p>
+  {% endif %}
+
+  {% if book_error %}
+    <div class="notice notice-error">{{ book_error }}</div>
+  {% endif %}
+
+  <form method="post" action="{% url 'body_double:book' %}" class="needs-form">
+    {% csrf_token %}
+
+    <fieldset class="needs-row">
+      <legend>When?</legend>
+      <div class="when-inputs">
+        <input type="date" name="date" value="{{ book_initial.date }}" required>
+        <input type="time" name="time" value="{{ book_initial.time }}" required>
+      </div>
+      <small class="row-hint">We'll pair you with anyone whose booked window overlaps yours by 15 minutes or more.</small>
+    </fieldset>
+
+    <fieldset class="needs-row">
+      <legend>How long?</legend>
+      <div class="pill-group" role="radiogroup">
+        <label class="pill"><input type="radio" name="duration_minutes" value="15"{% if book_initial.duration_minutes == 15 %} checked{% endif %}> 15 min</label>
+        <label class="pill"><input type="radio" name="duration_minutes" value="30"{% if book_initial.duration_minutes == 30 %} checked{% endif %}> 30 min</label>
+        <label class="pill"><input type="radio" name="duration_minutes" value="45"{% if book_initial.duration_minutes == 45 %} checked{% endif %}> 45 min</label>
+        <label class="pill"><input type="radio" name="duration_minutes" value="60"{% if book_initial.duration_minutes == 60 %} checked{% endif %}> 60 min</label>
+        <label class="pill"><input type="radio" name="duration_minutes" value="90"{% if book_initial.duration_minutes == 90 %} checked{% endif %}> 90 min</label>
+      </div>
+    </fieldset>
+
+    <fieldset class="needs-row">
+      <legend>How chatty?</legend>
+      <div class="pill-group" role="radiogroup">
+        <label class="pill"><input type="radio" name="chattiness" value="chatty"> 🗣 Chatty</label>
+        <label class="pill"><input type="radio" name="chattiness" value="quiet"> 🤫 Quiet</label>
+        <label class="pill"><input type="radio" name="chattiness" value="flexible" checked> 🌿 Flexible</label>
+      </div>
+      <small class="row-hint">We'll never match a chatty person with a quiet one — pick flexible if you don't mind.</small>
+    </fieldset>
+
+    <fieldset class="needs-row">
+      <legend>What kind of work?</legend>
+      <div class="pill-group" role="radiogroup">
+        <label class="pill"><input type="radio" name="work_mode" value="deep_focus"> Deep focus</label>
+        <label class="pill"><input type="radio" name="work_mode" value="busywork"> Busywork</label>
+        <label class="pill"><input type="radio" name="work_mode" value="admin"> Admin / email</label>
+        <label class="pill"><input type="radio" name="work_mode" value="any" checked> Any</label>
+      </div>
+      <small class="row-hint">Helps you pair with someone in a similar mode — for bookings this is a preference, never a blocker.</small>
+    </fieldset>
+
+    {% if user_communities %}
+      <fieldset class="needs-row">
+        <legend>Community <small class="legend-meta">(optional)</small></legend>
+        <select name="community" class="community-select">
+          <option value="">— any —</option>
+          {% for community in user_communities %}
+            <option value="{{ community.slug }}">{{ community.name }} ({{ community.member_count }})</option>
+          {% endfor %}
+        </select>
+        <small class="row-hint">Prefer matching with someone from this group.</small>
+      </fieldset>
+    {% endif %}
+
+    <div class="needs-actions">
+      <button type="submit" class="btn btn-primary btn-lg">Book this slot</button>
+    </div>
+  </form>
+
+  <details class="how-it-works">
+    <summary>How scheduled sessions work</summary>
+    <ol>
+      <li>You book a time; we instantly pair you with anyone whose booking overlaps.</li>
+      <li>If nobody overlaps yet, your booking waits — you'll get matched the moment someone books a fitting slot.</li>
+      <li>The Join button opens {{ join_early_min }} minutes before the agreed start. Whoever joins first opens the room and waits there.</li>
+      <li>If your slot passes unmatched, it expires — try the live pool instead.</li>
+    </ol>
+  </details>
+</section>
+
+<script>
+  (function () {
+    const USER_ID = {{ request.user.id }};
+    const STATUS_URL = "{% url 'body_double:schedule_status' %}";
+
+    function start() {
+      /* Shared matchmaking socket — booking_matched / booking_cancelled /
+         match_found events arrive here (handled by Alpine above). */
+      if (window.Alpine && Alpine.store("ws")) {
+        Alpine.store("ws").connect("/ws/matchmaking/" + USER_ID + "/");
+      }
+
+      /* Enable Join buttons the second their window opens — same direct
+         DOM-mutation idiom as the waiting page counter. */
+      setInterval(function () {
+        const now = Date.now() / 1000;
+        document.querySelectorAll(".btn-join[disabled][data-join-epoch]").forEach(function (btn) {
+          if (now >= parseFloat(btn.dataset.joinEpoch)) btn.removeAttribute("disabled");
+        });
+      }, 1000);
+
+      /* Polling fallback (5s): reload when the bookings fingerprint
+         changes — catches matched/cancelled/expired transitions if the
+         WS misses them. */
+      let fingerprint = null;
+      setInterval(async function () {
+        try {
+          const r = await fetch(STATUS_URL, {
+            headers: { Accept: "application/json" },
+            credentials: "same-origin",
+          });
+          if (!r.ok) return;
+          const body = await r.text();
+          if (fingerprint !== null && body !== fingerprint) {
+            window.location.reload();
+            return;
+          }
+          fingerprint = body;
+        } catch (e) {
+          /* network blip — try again on the next tick */
+        }
+      }, 5000);
+    }
+
+    document.addEventListener("alpine:initialized", start);
+  })();
+</script>
+{% endblock %}
+
+{% block head_extra %}
+<style>
+  /* Inline per repo convention — no Tailwind, no build step. Reuses CSS
+     variables from static/css/site.css; form styles mirror index.html. */
+  .body-double-schedule { padding-top: 0.5rem; }
+  .body-double-schedule h1 {
+    font-family: var(--font-serif);
+    font-size: 2rem;
+    margin: 0 0 0.5rem;
+  }
+  .body-double-schedule h2 {
+    font-family: var(--font-serif);
+    font-size: 1.25rem;
+    margin: 2rem 0 0.75rem;
+  }
+  .body-double-schedule .lead {
+    color: var(--ink-muted);
+    margin: 0 0 1.5rem;
+    line-height: 1.5;
+  }
+  .body-double-schedule .lead a { color: var(--terracotta); }
+
+  .notice {
+    border-radius: var(--radius-md);
+    padding: 0.75rem 1rem;
+    margin: 0.75rem 0;
+    font-size: 0.92rem;
+  }
+  .notice-expired { background: var(--tag-asking, #fef3c7); }
+  .notice-error { background: var(--tag-venting, #fee2e2); }
+  .notice a { color: var(--terracotta); font-weight: 600; }
+
+  .booking-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.6rem; }
+  .booking-row {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: 0.85rem 1rem;
+    display: grid;
+    gap: 0.35rem;
+  }
+  .booking-when { font-size: 1rem; }
+  .booking-state { font-size: 0.9rem; color: var(--ink-muted); }
+  .booking-state strong { color: var(--ink); }
+  .state-tag {
+    display: inline-block;
+    border-radius: var(--radius-pill);
+    padding: 0.1rem 0.6rem;
+    font-size: 0.78rem;
+    font-weight: 700;
+  }
+  .state-open { background: var(--bg-sunk); color: var(--ink-muted); }
+  .state-matched { background: var(--tag-worked); color: var(--tag-worked-ink); }
+  .state-live { background: var(--tag-worked); color: var(--tag-worked-ink); }
+  .booking-actions { display: flex; gap: 0.5rem; align-items: center; margin-top: 0.25rem; }
+  .booking-actions .muted { color: var(--ink-muted); font-size: 0.8rem; }
+
+  .free-hint { color: var(--ink-muted); font-size: 0.92rem; margin: 0 0 1rem; }
+  .free-slot { color: var(--ink); font-weight: 600; white-space: nowrap; }
+
+  .needs-form {
+    display: grid;
+    gap: 1.5rem;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: 1.5rem;
+  }
+  .needs-row { border: 0; padding: 0; margin: 0; }
+  .needs-row legend {
+    font-family: var(--font-serif);
+    font-size: 1.05rem;
+    font-weight: 700;
+    margin-bottom: 0.6rem;
+    padding: 0;
+    color: var(--ink);
+  }
+  .needs-row .legend-meta {
+    font-family: var(--font-sans);
+    font-weight: 400;
+    color: var(--ink-muted);
+  }
+  .when-inputs { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+  .when-inputs input {
+    font-size: 0.95rem;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    background: var(--bg);
+    color: var(--ink);
+  }
+
+  .pill-group { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.45rem 0.95rem;
+    border-radius: var(--radius-pill);
+    background: var(--bg);
+    color: var(--ink-muted);
+    font-weight: 600;
+    font-size: 0.9rem;
+    cursor: pointer;
+    user-select: none;
+    border: 1px solid var(--border-color);
+    transition: background 100ms ease, color 100ms ease;
+  }
+  .pill input { display: none; }
+  .pill:hover { background: var(--bg-sunk); color: var(--ink); }
+  .pill:has(input:checked) {
+    background: var(--tag-worked);
+    color: var(--tag-worked-ink);
+    border-color: transparent;
+  }
+
+  .community-select {
+    font-size: 0.95rem;
+    padding: 0.55rem 0.85rem;
+    width: 100%;
+    max-width: 360px;
+  }
+  .row-hint {
+    display: block;
+    color: var(--ink-muted);
+    margin-top: 0.5rem;
+    font-size: 0.82rem;
+    line-height: 1.4;
+  }
+  .needs-actions { text-align: center; margin-top: 0.25rem; }
+  .btn-lg { font-size: 1.05rem; padding: 0.85rem 2rem; }
+
+  .how-it-works {
+    margin-top: 2.5rem;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: 1rem 1.25rem;
+  }
+  .how-it-works summary {
+    cursor: pointer;
+    font-weight: 600;
+    font-family: var(--font-serif);
+  }
+  .how-it-works ol { padding-left: 1.25rem; }
+  .how-it-works li { margin: 0.4rem 0; }
+</style>
+{% endblock %}

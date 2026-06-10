@@ -1,20 +1,30 @@
 """Body-double matchmaking models.
 
-Two tables capture all of pool + session state:
+Three tables capture pool + booking + session state:
 
   `BodyDoubleSession` — one row per matched pair, holds the LiveKit
     (or other provider) room ID, both participants' FKs, and lifecycle
     timestamps.
-  `PoolTicket` — one row per "I want to be matched" attempt, FK to user
+  `PoolTicket` — one row per LIVE "match me now" attempt, FK to user
     and (once paired) to its partner ticket + the resulting session.
+  `ScheduledBooking` — one row per PRE-BOOKED "match me at 15:00"
+    request. Same preference fields as PoolTicket, but anchored on a
+    future `start_at` rather than queue order, and matched against
+    overlapping bookings at booking time. The session is created lazily
+    when the first participant joins, not at match time.
 
 A partial unique constraint on PoolTicket prevents a user from holding
 more than one active (waiting OR matched) ticket simultaneously, so the
 matchmaking flow can rely on `select_for_update` + the constraint to
 serialise double-click submissions without application-level locks.
+Bookings deliberately have NO such constraint — a user may hold several
+future bookings (and a live ticket) at once; per-user overlap is
+enforced in the service layer instead.
 """
 
 from __future__ import annotations
+
+from datetime import timedelta
 
 from django.conf import settings
 from django.db import models
@@ -230,6 +240,124 @@ class PoolTicket(TimeStampedModel):
 
     def __str__(self) -> str:
         return f"ticket #{self.pk} {self.user_id} ({self.status})"
+
+    @property
+    def is_active(self) -> bool:
+        return self.status in self.ACTIVE_STATUSES
+
+
+class ScheduledBooking(TimeStampedModel):
+    """A user's intent to be matched at a FUTURE time.
+
+    Lifecycle: open → matched → completed, OR open/matched → cancelled /
+    expired (terminal). Unlike PoolTicket there is no separate "waiting"
+    page — an open booking just sits on the schedule page until a
+    compatible overlapping booking arrives, the user cancels, or the
+    window passes (lazy expiry; there is no background job).
+
+    Matched pairs hold identical `agreed_start_at` / `agreed_end_at` —
+    the overlap of the two requested windows. The `BodyDoubleSession` is
+    created only when the first participant clicks Join inside the join
+    window, so `session` stays NULL between match and start.
+    """
+
+    STATUS_OPEN = "open"
+    STATUS_MATCHED = "matched"
+    STATUS_COMPLETED = "completed"  # session ended normally
+    STATUS_CANCELLED = "cancelled"
+    STATUS_EXPIRED = "expired"  # window passed unmatched, or matched pair no-showed
+    STATUS_CHOICES = [
+        (STATUS_OPEN, "Open"),
+        (STATUS_MATCHED, "Matched"),
+        (STATUS_COMPLETED, "Completed"),
+        (STATUS_CANCELLED, "Cancelled"),
+        (STATUS_EXPIRED, "Expired"),
+    ]
+
+    # Bookings in these states appear on the schedule page and count as
+    # busy time for the user's timetable. Completed / cancelled / expired
+    # are terminal.
+    ACTIVE_STATUSES = (STATUS_OPEN, STATUS_MATCHED)
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="body_double_bookings",
+    )
+    community = models.ForeignKey(
+        "communities.Community",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="scheduled_bookings",
+    )
+
+    # When the user wants to start. Exact time — "flexibility" falls out
+    # of overlap matching, not a separate field: two bookings pair when
+    # their [start_at, end_at) windows share at least
+    # BODY_DOUBLE_BOOKING_MIN_OVERLAP_MIN minutes.
+    start_at = models.DateTimeField(db_index=True)
+
+    # Same preference fields as PoolTicket, same semantics: chattiness is
+    # the hard compatibility rule; work_mode and community only affect
+    # partner ranking for bookings (no wait-time phases at booking time).
+    duration_minutes = models.PositiveSmallIntegerField(
+        choices=PoolTicket.DURATION_CHOICES,
+        default=30,
+        help_text="Planned session length from start_at.",
+    )
+    chattiness = models.CharField(
+        max_length=10,
+        choices=PoolTicket.CHATTINESS_CHOICES,
+        default=PoolTicket.CHATTINESS_FLEXIBLE,
+        help_text="Conversational preference. Hard compat rule in the matcher.",
+    )
+    work_mode = models.CharField(
+        max_length=15,
+        choices=PoolTicket.WORK_MODE_CHOICES,
+        default=PoolTicket.WORK_MODE_ANY,
+        help_text="What you're working on. Affects partner ranking only.",
+    )
+
+    status = models.CharField(
+        max_length=10, choices=STATUS_CHOICES, default=STATUS_OPEN, db_index=True
+    )
+    # The other half of this match, once paired. Null while open.
+    matched_with = models.ForeignKey(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="match_pair",
+    )
+    # Created lazily by the first Join inside the join window. Null while
+    # open AND between match and first join.
+    session = models.ForeignKey(
+        BodyDoubleSession,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="bookings",
+    )
+    # The overlap of the two requested windows, denormalised onto BOTH
+    # rows at match time (mirrors matched_with / session on PoolTicket).
+    agreed_start_at = models.DateTimeField(null=True, blank=True)
+    agreed_end_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["start_at"]
+        indexes = [
+            models.Index(fields=["status", "start_at"]),
+            models.Index(fields=["user", "start_at"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"booking #{self.pk} {self.user_id} @ {self.start_at:%Y-%m-%d %H:%M} ({self.status})"
+
+    @property
+    def end_at(self):
+        """End of the REQUESTED window (not the agreed overlap)."""
+        return self.start_at + timedelta(minutes=self.duration_minutes)
 
     @property
     def is_active(self) -> bool:

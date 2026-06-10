@@ -77,16 +77,35 @@ def _build_tasks_panel(user) -> dict:
 
 
 def _build_body_double_panel(user) -> dict:
-    """Three-state CTA: idle / waiting / matched."""
-    from apps.body_double.models import PoolTicket
-    from apps.body_double.services import get_active_ticket
+    """Four-state CTA: idle / waiting / matched / upcoming.
+
+    Priority matched > waiting > upcoming > idle — a live session always
+    wins; a scheduled booking only surfaces when nothing's live. The
+    pre-existing three states keep their exact markup contract."""
+    from apps.body_double.models import PoolTicket, ScheduledBooking
+    from apps.body_double.services import get_active_ticket, upcoming_bookings
 
     ticket = get_active_ticket(user=user)
-    if ticket is None:
-        return {"state": "idle"}
-    if ticket.status == PoolTicket.STATUS_MATCHED and ticket.session_id:
+    if ticket is not None and ticket.status == PoolTicket.STATUS_MATCHED and ticket.session_id:
         return {"state": "matched", "session_id": ticket.session_id}
-    return {"state": "waiting", "ticket_id": ticket.id}
+    if ticket is not None:
+        return {"state": "waiting", "ticket_id": ticket.id}
+
+    bookings = upcoming_bookings(user=user)
+    if bookings:
+        nxt = bookings[0]
+        # A booking whose partner already opened the room counts as
+        # matched — same "Rejoin your room" button.
+        if nxt.session_id is not None:
+            return {"state": "matched", "session_id": nxt.session_id}
+        return {
+            "state": "upcoming",
+            "booking_id": nxt.id,
+            "start_at": nxt.agreed_start_at or nxt.start_at,
+            "matched": nxt.status == ScheduledBooking.STATUS_MATCHED,
+            "partner_nickname": nxt.matched_with.user.nickname if nxt.matched_with_id else None,
+        }
+    return {"state": "idle"}
 
 
 def _build_communities_panel(user) -> dict:

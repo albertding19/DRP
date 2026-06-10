@@ -313,3 +313,51 @@ class TestEmailAvailabilityCheck:
         )
         assert response.status_code == 200
         assert b"taken" in response.content
+
+
+# ---------------------------------------------------------------------------
+# Email-send failure must degrade to a form error, never a 500
+# ---------------------------------------------------------------------------
+@pytest.mark.django_db
+class TestEmailDeliveryFailure:
+    """Regression: in prod the Resend backend raises on any non-2xx (the
+    sandbox sender refuses recipients other than the account owner). A
+    nickname-only user adding an email then got a bare 500. Every view
+    that sends a magic link must catch the failure and re-render its form
+    with a friendly message — and the aborted transaction must roll the
+    token row back so a retry starts clean."""
+
+    _COULDNT_SEND = b"couldn&#x27;t send the"
+
+    def test_claim_send_failure_re_renders_form(self) -> None:
+        client, user = _authed_client()
+        with patch(
+            "apps.accounts.services.send_mail", side_effect=RuntimeError("403 from provider")
+        ):
+            response = client.post("/accounts/claim/", {"email": "claimfail@example.com"})
+        assert response.status_code == 200
+        assert self._COULDNT_SEND in response.content
+        assert SignInToken.objects.count() == 0  # rolled back with the transaction
+        user.refresh_from_db()
+        assert user.email is None
+
+    def test_settings_email_send_failure_re_renders_form(self) -> None:
+        client, user = _authed_client()  # no email yet — the reported case
+        with patch(
+            "apps.accounts.services.send_mail", side_effect=RuntimeError("403 from provider")
+        ):
+            response = client.post("/accounts/settings/email/", {"email": "setfail@example.com"})
+        assert response.status_code == 200
+        assert self._COULDNT_SEND in response.content
+        assert SignInToken.objects.count() == 0
+        user.refresh_from_db()
+        assert user.email is None
+
+    def test_start_send_failure_re_renders_form(self) -> None:
+        with patch(
+            "apps.accounts.services.send_mail", side_effect=RuntimeError("403 from provider")
+        ):
+            response = Client().post("/accounts/start/", {"email": "startfail@example.com"})
+        assert response.status_code == 200
+        assert self._COULDNT_SEND in response.content
+        assert SignInToken.objects.count() == 0

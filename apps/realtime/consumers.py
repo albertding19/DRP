@@ -82,9 +82,11 @@ class PostConsumer(AsyncJsonWebsocketConsumer):
 class MatchmakingConsumer(AsyncJsonWebsocketConsumer):
     """Per-user channel for body-double matchmaking notifications.
 
-    The waiting page connects to `/ws/matchmaking/<user_id>/` and listens
-    for a single event type — `match_found` — which carries the URL the
-    client should redirect to.
+    The waiting page / schedule page / dashboard connect to
+    `/ws/matchmaking/<user_id>/` and listen for:
+      - match_found       → a session is live; carries the room URL
+      - booking_matched   → a scheduled booking found a partner
+      - booking_cancelled → a matched partner cancelled; booking re-opened
 
     Authorisation: trusts the URL kwarg. In a hostile threat model we'd
     cross-check `self.scope["user"]`, but the same nickname-based auth
@@ -111,3 +113,9 @@ class MatchmakingConsumer(AsyncJsonWebsocketConsumer):
 
     async def match_found(self, event: dict) -> None:
         await self.send_json({"type": "match_found", "payload": event["payload"]})
+
+    async def booking_matched(self, event: dict) -> None:
+        await self.send_json({"type": "booking_matched", "payload": event["payload"]})
+
+    async def booking_cancelled(self, event: dict) -> None:
+        await self.send_json({"type": "booking_cancelled", "payload": event["payload"]})

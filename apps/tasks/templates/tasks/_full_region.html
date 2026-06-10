@@ -48,14 +48,31 @@ stable.
 
 <div class="section-card">
   <div class="section-card-header">
-    <h2>🔒 Already booked ({{ busy_blocks|length }})</h2>
+    {% with bd_count=body_double_bookings|length %}
+      <h2>🔒 Already booked ({{ busy_blocks|length|add:bd_count }})</h2>
+    {% endwith %}
   </div>
   <div class="section-card-body">
+    {% for booking in body_double_bookings %}
+      {# Read-only — managed on the body-double schedule page. #}
+      <div class="task-row">
+        <span class="name" style="flex: 1;">
+          🤝 Body double
+          {% if booking.status == "matched" %}with {{ booking.matched_with.user.nickname }}{% endif %}
+        </span>
+        <small class="muted">
+          {{ booking.agreed_start_at|default:booking.start_at|date:"H:i" }}–{{ booking.agreed_end_at|default:booking.end_at|date:"H:i" }}
+        </small>
+        <span class="actions">
+          <a href="{% url 'body_double:schedule' %}" class="btn btn-secondary" title="Manage on the schedule page">Manage</a>
+        </span>
+      </div>
+    {% endfor %}
     {% if busy_blocks %}
       {% for block in busy_blocks %}
         {% include "tasks/_busy_block.html" with block=block %}
       {% endfor %}
-    {% else %}
+    {% elif not body_double_bookings %}
       <p class="empty-line">Nothing booked yet.</p>
     {% endif %}
   </div>

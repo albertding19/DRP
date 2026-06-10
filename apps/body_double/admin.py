@@ -7,7 +7,7 @@ from __future__ import annotations
 from django.contrib import admin
 from django.utils import timezone
 
-from .models import BodyDoubleSession, PoolTicket
+from .models import BodyDoubleSession, PoolTicket, ScheduledBooking
 
 
 @admin.register(PoolTicket)
@@ -25,6 +25,24 @@ class PoolTicketAdmin(admin.ModelAdmin):
     readonly_fields = ("created_at", "updated_at")
     search_fields = ("user__nickname",)
     ordering = ("-created_at",)
+
+
+@admin.register(ScheduledBooking)
+class ScheduledBookingAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "user",
+        "start_at",
+        "duration_minutes",
+        "status",
+        "matched_with",
+        "session",
+    )
+    list_filter = ("status", "start_at")
+    raw_id_fields = ("user", "community", "matched_with", "session")
+    readonly_fields = ("created_at", "updated_at")
+    search_fields = ("user__nickname",)
+    ordering = ("-start_at",)
 
 
 @admin.register(BodyDoubleSession)

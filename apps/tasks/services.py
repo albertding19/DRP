@@ -292,6 +292,21 @@ def auto_plan(*, user, now: datetime | None = None) -> dict:
 
     busy_qs = BusyBlock.objects.filter(user=user, start_at__lt=day_end, end_at__gt=day_start)
     busy: list[BusyInterval] = [BusyInterval(start=b.start_at, end=b.end_at) for b in busy_qs]
+    # Booked body-double sessions occupy their windows too — read from the
+    # body_double seam rather than materialising BusyBlocks that would need
+    # cancel/expire sync. Guarded like _enqueue_body_double: a body-double
+    # failure must never break planning.
+    try:
+        from apps.body_double.services import booking_busy_intervals
+
+        busy.extend(
+            BusyInterval(start=s, end=e)
+            for s, e in booking_busy_intervals(
+                user=user, window_start=day_start, window_end=day_end
+            )
+        )
+    except Exception:  # pragma: no cover — defensive logging
+        logger.exception("failed to load body-double bookings for auto_plan; ignoring them")
     # Treat in-progress task as a locked busy interval from now → now+remaining.
     if in_progress is not None and in_progress.remaining_minutes > 0:
         busy.append(

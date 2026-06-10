@@ -91,7 +91,11 @@ services:
         sync: false
       # Resend SMTP — the API key doubles as the SMTP password (host is
       # smtp.resend.com:587, user is "resend"). DEFAULT_FROM_EMAIL must
-      # use a domain verified in the Resend dashboard for deliverability.
+      # use a domain verified in the Resend dashboard: the
+      # onboarding@resend.dev sandbox sender below can ONLY deliver to
+      # the Resend account owner's own address — every other recipient
+      # is rejected (403), so claim/email-change for real users needs a
+      # verified domain here.
       - key: RESEND_API_KEY
         sync: false
       - key: DEFAULT_FROM_EMAIL

@@ -260,6 +260,39 @@ class TestAutoPlan:
         # Other task can't start until in-progress finishes (now + 90min).
         assert other.scheduled_start >= now + timedelta(minutes=90)
 
+    def test_avoids_body_double_booking_window(self, _planner_settings) -> None:
+        from apps.body_double.models import ScheduledBooking
+
+        u = _user("ap_bd")
+        now = self._fixed_now()
+        # Booked body double 10:00–10:30; a 30-min task must start after.
+        ScheduledBooking.objects.create(
+            user=u,
+            start_at=now,
+            duration_minutes=30,
+            status=ScheduledBooking.STATUS_OPEN,
+        )
+        t = create_task(user=u, name="after the call", duration_minutes=30)
+        auto_plan(user=u, now=now)
+        t.refresh_from_db()
+        assert t.scheduled_start >= now + timedelta(minutes=30)
+
+    def test_cancelled_booking_does_not_block(self, _planner_settings) -> None:
+        from apps.body_double.models import ScheduledBooking
+
+        u = _user("ap_bd2")
+        now = self._fixed_now()
+        ScheduledBooking.objects.create(
+            user=u,
+            start_at=now,
+            duration_minutes=30,
+            status=ScheduledBooking.STATUS_CANCELLED,
+        )
+        t = create_task(user=u, name="free now", duration_minutes=30)
+        auto_plan(user=u, now=now)
+        t.refresh_from_db()
+        assert t.scheduled_start == now
+
     def test_leftover_for_giant_task(self, _planner_settings) -> None:
         u = _user("ap7")
         now = self._fixed_now()

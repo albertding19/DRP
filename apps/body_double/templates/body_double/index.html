@@ -63,6 +63,9 @@
 
     <div class="needs-actions">
       <button type="submit" class="btn btn-primary btn-lg">Find me a body double</button>
+      <p class="schedule-link">
+        <a href="{% url 'body_double:schedule' %}">Or schedule one for later →</a>
+      </p>
     </div>
   </form>
 
@@ -172,6 +175,8 @@
     text-align: center;
     margin-top: 0.25rem;
   }
+  .schedule-link { margin: 0.75rem 0 0; font-size: 0.9rem; }
+  .schedule-link a { color: var(--terracotta); }
   .btn-lg {
     font-size: 1.05rem;
     padding: 0.85rem 2rem;

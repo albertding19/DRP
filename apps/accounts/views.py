@@ -28,6 +28,7 @@ from .forms import (
 )
 from .models import SignInToken, User
 from .services import (
+    EmailDeliveryError,
     EmailTakenError,
     OAuthError,
     RateLimitedError,
@@ -104,6 +105,11 @@ def start(request: HttpRequest) -> HttpResponse:
                 form.add_error(
                     "email",
                     "Too many sign-in links requested. Wait an hour and try again.",
+                )
+            except EmailDeliveryError:
+                form.add_error(
+                    "email",
+                    "We couldn't send the email — please try again in a moment.",
                 )
             else:
                 # Stash the pending sign-in in THIS browser's session so the
@@ -335,6 +341,11 @@ def claim(request: HttpRequest) -> HttpResponse:
                     "email",
                     "Too many requests. Wait an hour and try again.",
                 )
+            except EmailDeliveryError:
+                form.add_error(
+                    "email",
+                    "We couldn't send the verification email — please try again in a moment.",
+                )
             else:
                 return redirect(
                     reverse("accounts:check_email") + f"?email={form.cleaned_data['email']}"
@@ -405,6 +416,11 @@ def settings_email(request: HttpRequest) -> HttpResponse:
             form.add_error("email", "Too many requests. Wait an hour and try again.")
         except EmailTakenError:
             form.add_error("email", "That email's already in use.")
+        except EmailDeliveryError:
+            form.add_error(
+                "email",
+                "We couldn't send the verification email — please try again in a moment.",
+            )
         else:
             return redirect(
                 reverse("accounts:check_email") + f"?email={form.cleaned_data['email']}"
