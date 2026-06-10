@@ -19,6 +19,7 @@ urlpatterns = [
     path("room/<int:session_id>/", views.room, name="room"),
     path("leave/", views.leave, name="leave"),
     path("sessions/<int:session_id>/end/", views.end, name="end"),
+    path("sessions/<int:session_id>/refill/", views.refill, name="refill"),
     path("schedule/", views.schedule, name="schedule"),
     path("schedule/book/", views.book_view, name="book"),
     path("schedule/status/", views.schedule_status, name="schedule_status"),

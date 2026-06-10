@@ -50,6 +50,7 @@ from .services import (
     end_session,
     enqueue,
     get_active_ticket,
+    request_refill,
     upcoming_bookings,
 )
 
@@ -68,7 +69,10 @@ def index(request: HttpRequest) -> HttpResponse:
         community.
     """
     ticket = get_active_ticket(user=request.user)
-    if ticket is not None and ticket.status == PoolTicket.STATUS_MATCHED and ticket.session_id:
+    if ticket is not None and ticket.session_id:
+        # Matched — or WAITING with a session, which means a refill ticket:
+        # the user is alone in a live room awaiting a new partner. Either
+        # way their place is the room, not the waiting page.
         return redirect("body_double:room", session_id=ticket.session_id)
     if ticket is not None and ticket.status == PoolTicket.STATUS_WAITING:
         return redirect("body_double:waiting")
@@ -158,9 +162,10 @@ def waiting(request: HttpRequest) -> HttpResponse:
     if ticket is None:
         # Nothing to wait on — bounce to landing.
         return redirect("body_double:index")
-    if ticket.status == PoolTicket.STATUS_MATCHED and ticket.session_id:
-        # Already matched (race: WS push arrived but user reloaded the
-        # waiting URL anyway). Redirect to room.
+    if ticket.session_id:
+        # Matched (race: WS push arrived but user reloaded the waiting
+        # URL anyway) — or a refill ticket, whose holder belongs in
+        # their still-live room. Redirect to room.
         return redirect("body_double:room", session_id=ticket.session_id)
     return render(
         request,
@@ -243,13 +248,31 @@ def leave(request: HttpRequest) -> HttpResponse:
 @login_required
 @require_POST
 def end(request: HttpRequest, session_id: int) -> HttpResponse:
-    """Mark the session as ended. Either participant can end."""
+    """Leave the session (the last participant out ends it)."""
     session = get_object_or_404(BodyDoubleSession, pk=session_id)
     try:
         end_session(session=session, user=request.user)
     except NotInSessionError:
         raise Http404("No such session.") from None
     return redirect("body_double:index")
+
+
+@login_required
+@require_POST
+def refill(request: HttpRequest, session_id: int) -> JsonResponse:
+    """Called by the survivor's room page when their partner has left:
+    re-enter the matching pool without leaving the room. JSON because
+    the caller is a background fetch — the user must NOT be navigated."""
+    session = get_object_or_404(BodyDoubleSession, pk=session_id)
+    try:
+        ticket, matched_now = request_refill(session=session, user=request.user)
+    except NotInSessionError:
+        raise Http404("No such session.") from None
+    except AlreadyInPoolError:
+        return JsonResponse({"status": "waiting"})
+    if ticket is None:
+        return JsonResponse({"status": "ended"})
+    return JsonResponse({"status": "matched" if matched_now else "waiting"})
 
 
 # ---------------------------------------------------------------------------

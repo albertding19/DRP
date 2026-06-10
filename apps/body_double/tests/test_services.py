@@ -184,12 +184,24 @@ class TestEndSession:
         _, session = enqueue(user=bob)
         return alice, bob, session
 
-    def test_participant_can_end(self) -> None:
-        alice, _, session = self._matched_pair()
+    def test_first_leaver_keeps_session_alive_for_partner(self) -> None:
+        # End = leave. With bob still attached, the room must survive so
+        # a refill can drop a new partner in.
+        alice, bob, session = self._matched_pair()
         end_session(session=session, user=alice)
+        session.refresh_from_db()
+        assert session.status == BodyDoubleSession.STATUS_ACTIVE
+        assert PoolTicket.objects.get(user=alice).status == PoolTicket.STATUS_COMPLETED
+        assert PoolTicket.objects.get(user=bob).status == PoolTicket.STATUS_MATCHED
+
+    def test_last_leaver_ends_session(self) -> None:
+        alice, bob, session = self._matched_pair()
+        end_session(session=session, user=alice)
+        end_session(session=session, user=bob)
         session.refresh_from_db()
         assert session.status == BodyDoubleSession.STATUS_ENDED
         assert session.ended_at is not None
+        assert PoolTicket.objects.get(user=bob).status == PoolTicket.STATUS_COMPLETED
 
     def test_non_participant_cannot_end(self) -> None:
         _, _, session = self._matched_pair()
@@ -200,27 +212,24 @@ class TestEndSession:
         assert session.status == BodyDoubleSession.STATUS_ACTIVE
 
     def test_idempotent_on_already_ended(self) -> None:
-        alice, _, session = self._matched_pair()
+        alice, bob, session = self._matched_pair()
         end_session(session=session, user=alice)
-        # Second call should be a no-op, not raise.
+        end_session(session=session, user=bob)
+        # Repeat calls should be no-ops, not raise.
         end_session(session=session, user=alice)
+        end_session(session=session, user=bob)
         session.refresh_from_db()
         assert session.status == BodyDoubleSession.STATUS_ENDED
 
-    def test_tickets_become_completed_so_user_can_re_enqueue(self) -> None:
-        """Regression: after a session ends, both users' tickets must
-        transition to COMPLETED so they can enqueue again. Previously the
-        tickets stayed MATCHED, which caused the index view to redirect
-        to the now-ended room → room view redirects back to index →
-        Safari refuses the loop ('can't open this page')."""
-        alice, bob, session = self._matched_pair()
+    def test_leaver_can_re_enqueue(self) -> None:
+        """Regression: after leaving, the leaver's ticket must be
+        COMPLETED so they can enqueue again. Previously a lingering
+        MATCHED ticket caused the index view to redirect to the dead
+        room → room view redirects back → Safari refuses the loop."""
+        alice, _bob, session = self._matched_pair()
         end_session(session=session, user=alice)
 
-        alice_ticket = PoolTicket.objects.get(user=alice)
-        bob_ticket = PoolTicket.objects.get(user=bob)
-        assert alice_ticket.status == PoolTicket.STATUS_COMPLETED
-        assert bob_ticket.status == PoolTicket.STATUS_COMPLETED
-
+        assert PoolTicket.objects.get(user=alice).status == PoolTicket.STATUS_COMPLETED
         # And re-enqueue is now allowed (no AlreadyInPoolError).
         new_ticket, _ = enqueue(user=alice)
         assert new_ticket.status == PoolTicket.STATUS_WAITING

@@ -226,14 +226,24 @@ class TestActivateBooking:
         with pytest.raises(BookingNotJoinableError):
             activate_booking(booking=booking, user=u)
 
-    def test_end_session_completes_both_bookings(self) -> None:
+    def test_end_session_completes_bookings_as_each_leaves(self) -> None:
         alice, bob, first, second = self._matched_pair()
         session = activate_booking(booking=second, user=bob)
+        # End = leave: bob's booking retires, alice's stays attached and
+        # the session survives for her (refill semantics).
         end_session(session=session, user=bob)
         first.refresh_from_db()
         second.refresh_from_db()
-        assert first.status == ScheduledBooking.STATUS_COMPLETED
+        session.refresh_from_db()
         assert second.status == ScheduledBooking.STATUS_COMPLETED
+        assert first.status == ScheduledBooking.STATUS_MATCHED
+        assert session.status == BodyDoubleSession.STATUS_ACTIVE
+        # Last one out ends it.
+        end_session(session=session, user=alice)
+        first.refresh_from_db()
+        session.refresh_from_db()
+        assert first.status == ScheduledBooking.STATUS_COMPLETED
+        assert session.status == BodyDoubleSession.STATUS_ENDED
 
 
 @pytest.mark.django_db(transaction=True)

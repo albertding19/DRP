@@ -226,18 +226,69 @@
       }
     })
     .on(LivekitClient.RoomEvent.ParticipantConnected, (participant) => {
+      cancelRefillTimer();
       appendSystem(participant.identity + " joined.");
       setStatus("Connected.");
+      /* A refill partner may differ from the server-rendered name. */
+      const nameEl = document.querySelector(".room-meta strong");
+      if (nameEl) nameEl.textContent = participant.identity;
     })
     .on(LivekitClient.RoomEvent.ParticipantDisconnected, (participant) => {
       const card = document.getElementById("p-" + participant.identity);
       if (card) card.remove();
       appendSystem(participant.identity + " left.");
-      setStatus("Your body double left the session.");
+      scheduleRefill();
     })
     .on(LivekitClient.RoomEvent.Disconnected, () => {
       setStatus("Disconnected.");
     });
+
+  /* ----------------------------- partner refill ----------------------------- */
+
+  /* When the body double leaves (End button or closed tab — both surface
+     as a LiveKit disconnect here), quietly ask the server to find a
+     replacement who'll drop into THIS room. Grace period covers page
+     refreshes; a reconnect cancels the request. Deliberately low-key:
+     one status line, no modal, no navigation — the user keeps working. */
+  const REFILL_URL = "{% url 'body_double:refill' session_id=session.id %}";
+  const INDEX_URL = "{% url 'body_double:index' %}";
+  const REFILL_GRACE_MS = 10000;
+  let refillTimer = null;
+
+  const remoteCount = () =>
+    (room.remoteParticipants || room.participants || new Map()).size;
+
+  const cancelRefillTimer = () => {
+    if (refillTimer) { clearTimeout(refillTimer); refillTimer = null; }
+  };
+
+  const scheduleRefill = () => {
+    if (remoteCount() > 0) return;
+    setStatus("Your body double left — finding you a new one…");
+    cancelRefillTimer();
+    refillTimer = setTimeout(async () => {
+      refillTimer = null;
+      if (remoteCount() > 0) return; /* they came back */
+      try {
+        const csrf = document.querySelector("#end-form [name=csrfmiddlewaretoken]").value;
+        const r = await fetch(REFILL_URL, {
+          method: "POST",
+          headers: { "X-CSRFToken": csrf, Accept: "application/json" },
+          credentials: "same-origin",
+        });
+        if (!r.ok) return;
+        const data = await r.json();
+        if (data.status === "ended") {
+          /* Room is gone server-side — nothing to wait for here. */
+          window.location.href = INDEX_URL;
+        } else if (data.status === "matched") {
+          setStatus("New body double on their way.");
+        } else {
+          setStatus("Looking for a new body double — keep working, they'll just appear.");
+        }
+      } catch (e) { /* transient network blip — partner poll not critical */ }
+    }, REFILL_GRACE_MS);
+  };
 
   try {
     await room.connect(wsUrl, token);

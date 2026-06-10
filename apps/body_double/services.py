@@ -135,6 +135,22 @@ def enqueue(  # type: ignore[no-untyped-def]
     if partner is None:
         return ticket, None
 
+    # A waiting ticket that still points at an ACTIVE session is a REFILL
+    # ticket — its holder is alone in a room whose partner left. Join
+    # their room instead of opening a new one; the new user's POST
+    # response redirects them straight in, and the survivor just sees a
+    # tile appear. (A stale pointer to an ended session falls through to
+    # the normal fresh-room path below.)
+    if partner.session_id is not None:
+        existing = (
+            BodyDoubleSession.objects.select_for_update()
+            .filter(pk=partner.session_id, status=BodyDoubleSession.STATUS_ACTIVE)
+            .first()
+        )
+        if existing is not None:
+            _attach_refill(session=existing, refill_ticket=partner, joining_ticket=ticket)
+            return ticket, existing
+
     # Found a waiting partner — create the session, mark both matched.
     room_id = uuid4().hex
     _video_provider().create_room(room_id=room_id, max_participants=2)
@@ -206,22 +222,35 @@ def end_session(*, session: BodyDoubleSession, user) -> None:  # type: ignore[no
     if session.status == BodyDoubleSession.STATUS_ENDED:
         return  # idempotent
 
-    session.status = BodyDoubleSession.STATUS_ENDED
-    session.ended_at = timezone.now()
-    session.save(update_fields=["status", "ended_at", "updated_at"])
-
-    # Retire both tickets so the users can re-enqueue. COMPLETED is a
+    # Retire the LEAVER's attachments (matched ticket, waiting refill
+    # ticket, matched booking) so they can re-enqueue. COMPLETED is a
     # terminal status NOT in ACTIVE_STATUSES, so `get_active_ticket`
     # returns None and the landing CTA reappears.
-    PoolTicket.objects.filter(session=session, status=PoolTicket.STATUS_MATCHED).update(
-        status=PoolTicket.STATUS_COMPLETED, updated_at=timezone.now()
+    now = timezone.now()
+    PoolTicket.objects.filter(
+        session=session, user=user, status__in=PoolTicket.ACTIVE_STATUSES
+    ).update(status=PoolTicket.STATUS_COMPLETED, updated_at=now)
+    ScheduledBooking.objects.filter(
+        session=session, user=user, status=ScheduledBooking.STATUS_MATCHED
+    ).update(status=ScheduledBooking.STATUS_COMPLETED, updated_at=now)
+
+    # If the partner is still attached, the session (and LiveKit room)
+    # lives on — their client notices the departure and quietly calls
+    # `request_refill` so a new body double can drop into the same room.
+    partner_attached = (
+        PoolTicket.objects.filter(session=session, status__in=PoolTicket.ACTIVE_STATUSES)
+        .exclude(user=user)
+        .exists()
+        or ScheduledBooking.objects.filter(session=session, status=ScheduledBooking.STATUS_MATCHED)
+        .exclude(user=user)
+        .exists()
     )
-    # Same for scheduled bookings — sessions born from a booking carry
-    # the bookings FK'd to them. Also covers the no-show case: the lone
-    # joiner ends the empty session and both bookings retire.
-    ScheduledBooking.objects.filter(session=session, status=ScheduledBooking.STATUS_MATCHED).update(
-        status=ScheduledBooking.STATUS_COMPLETED, updated_at=timezone.now()
-    )
+    if partner_attached:
+        return
+
+    session.status = BodyDoubleSession.STATUS_ENDED
+    session.ended_at = now
+    session.save(update_fields=["status", "ended_at", "updated_at"])
 
     # Best-effort: ask the provider to tear down. LiveKit auto-cleans
     # empty rooms, so this is a no-op there; other providers may need it.
@@ -238,6 +267,121 @@ def get_active_ticket(*, user) -> PoolTicket | None:  # type: ignore[no-untyped-
         .order_by("-created_at")
         .first()
     )
+
+
+# ---------------------------------------------------------------------------
+# Refill — replace a departed partner without disturbing the survivor
+# ---------------------------------------------------------------------------
+def _attach_refill(
+    *, session: BodyDoubleSession, refill_ticket: PoolTicket, joining_ticket: PoolTicket
+) -> None:
+    """Pair `joining_ticket`'s user into `session`, taking the slot the
+    departed partner vacated. The refill holder keeps their slot, their
+    connection, and their concentration — the newcomer just appears."""
+    if session.user_a_id == refill_ticket.user_id:
+        session.user_b = joining_ticket.user
+    else:
+        session.user_a = joining_ticket.user
+    session.agreed_duration_minutes = min(
+        refill_ticket.duration_minutes or 30, joining_ticket.duration_minutes or 30
+    )
+    session.save(update_fields=["user_a", "user_b", "agreed_duration_minutes", "updated_at"])
+
+    PoolTicket.objects.filter(pk=refill_ticket.pk).update(
+        status=PoolTicket.STATUS_MATCHED,
+        matched_with=joining_ticket,
+        updated_at=timezone.now(),
+    )
+    PoolTicket.objects.filter(pk=joining_ticket.pk).update(
+        status=PoolTicket.STATUS_MATCHED,
+        matched_with=refill_ticket,
+        session=session,
+        updated_at=timezone.now(),
+    )
+
+
+@transaction.atomic
+def request_refill(  # type: ignore[no-untyped-def]
+    *, session: BodyDoubleSession, user
+) -> tuple[PoolTicket | None, bool]:
+    """The survivor's client reports their partner has left; put the
+    survivor back in the matching pool WITHOUT leaving the room.
+
+    Their ticket flips MATCHED → WAITING but KEEPS its session FK — a
+    waiting ticket pointing at an active session is the "refill" marker
+    that `enqueue` recognises: the next compatible user to enqueue is
+    routed into this room instead of a fresh one. Preferences carry over
+    automatically since it's the same ticket.
+
+    The departed partner's attachments are retired here (covers the
+    closed-tab case where they never clicked End — requesting a refill
+    formally evicts them; if they reload they're no longer a participant).
+
+    Returns `(ticket, matched_now)`:
+      (None,   False) — session is no longer active; client should leave.
+      (ticket, True)  — someone waiting in the pool joined immediately.
+      (ticket, False) — waiting; the next enqueue may join.
+    """
+    if not session.includes(user):
+        raise NotInSessionError("Only the session participants can request a refill.")
+
+    session = (
+        BodyDoubleSession.objects.select_for_update()
+        .filter(pk=session.pk, status=BodyDoubleSession.STATUS_ACTIVE)
+        .first()
+    )
+    if session is None:
+        return None, False
+
+    now = timezone.now()
+    tickets = list(
+        PoolTicket.objects.select_for_update().filter(
+            session=session, status__in=PoolTicket.ACTIVE_STATUSES
+        )
+    )
+    mine = next((t for t in tickets if t.user_id == user.id), None)
+
+    # Evict the departed partner's leftovers (tab-close case).
+    PoolTicket.objects.filter(session=session, status__in=PoolTicket.ACTIVE_STATUSES).exclude(
+        user=user
+    ).update(status=PoolTicket.STATUS_COMPLETED, updated_at=now)
+    ScheduledBooking.objects.filter(
+        session=session, status=ScheduledBooking.STATUS_MATCHED
+    ).exclude(user=user).update(status=ScheduledBooking.STATUS_COMPLETED, updated_at=now)
+
+    if mine is None:
+        # Booking-born session — the survivor has no live ticket. Mint a
+        # refill ticket from their booking's preferences.
+        booking = ScheduledBooking.objects.filter(
+            session=session, user=user, status=ScheduledBooking.STATUS_MATCHED
+        ).first()
+        try:
+            mine = PoolTicket.objects.create(
+                user=user,
+                session=session,
+                status=PoolTicket.STATUS_WAITING,
+                duration_minutes=booking.duration_minutes if booking else 30,
+                chattiness=booking.chattiness if booking else PoolTicket.CHATTINESS_FLEXIBLE,
+                work_mode=booking.work_mode if booking else PoolTicket.WORK_MODE_ANY,
+            )
+        except IntegrityError as exc:
+            raise AlreadyInPoolError("You already have an active body-double request.") from exc
+    elif mine.status == PoolTicket.STATUS_MATCHED:
+        mine.status = PoolTicket.STATUS_WAITING
+        mine.matched_with = None
+        mine.save(update_fields=["status", "matched_with", "updated_at"])
+    # else: already WAITING with session set — idempotent re-request.
+
+    partner = _strategy().find_match(mine)
+    # Never pair two refill tickets — each is anchored to its own room,
+    # and neither survivor should be teleported into the other's.
+    if partner is None or partner.session_id is not None:
+        return mine, False
+
+    _attach_refill(session=session, refill_ticket=mine, joining_ticket=partner)
+    # The joiner is sitting on the WAITING page — push them the room URL.
+    broadcast.broadcast_match_found(notify_user_id=partner.user_id, session=session)
+    return mine, True
 
 
 # ---------------------------------------------------------------------------
