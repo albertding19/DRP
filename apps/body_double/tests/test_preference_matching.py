@@ -225,3 +225,47 @@ class TestPreferenceMatchingStrategy:
         with transaction.atomic():
             match = PreferenceMatchingStrategy().find_match(only)
         assert match is None
+
+
+@pytest.mark.django_db(transaction=True)
+class TestFriendsOnlyMatching:
+    def _friends(self, a, b):
+        from apps.accounts.models import Friendship
+
+        Friendship.objects.create(from_user=a, to_user=b, status=Friendship.STATUS_ACCEPTED)
+
+    def test_friends_only_matches_friend(self) -> None:
+        a, b = _user("fr_a"), _user("fr_b")
+        self._friends(a, b)
+        partner = _ticket(a)
+        caller = PoolTicket.objects.create(
+            user=b, status=PoolTicket.STATUS_WAITING, friends_only=True
+        )
+        with transaction.atomic():
+            match = PreferenceMatchingStrategy().find_match(caller)
+        assert match is not None and match.pk == partner.pk
+
+    def test_friends_only_never_matches_stranger(self, settings) -> None:
+        settings.BODY_DOUBLE_LOOSE_S = 5
+        stranger = _ticket(_user("fr_s"))
+        _backdate(stranger, 600)  # past every phase — still excluded
+        caller = PoolTicket.objects.create(
+            user=_user("fr_c"), status=PoolTicket.STATUS_WAITING, friends_only=True
+        )
+        with transaction.atomic():
+            assert PreferenceMatchingStrategy().find_match(caller) is None
+
+    def test_friends_only_candidate_hidden_from_strangers(self) -> None:
+        hidden = PoolTicket.objects.create(
+            user=_user("fr_h"), status=PoolTicket.STATUS_WAITING, friends_only=True
+        )
+        caller = _ticket(_user("fr_open"))
+        with transaction.atomic():
+            assert PreferenceMatchingStrategy().find_match(caller) is None
+        # But their friend finds them.
+        friend = _user("fr_f")
+        self._friends(hidden.user, friend)
+        friend_caller = _ticket(friend)
+        with transaction.atomic():
+            match = PreferenceMatchingStrategy().find_match(friend_caller)
+        assert match is not None and match.pk == hidden.pk

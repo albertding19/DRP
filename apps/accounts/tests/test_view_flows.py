@@ -475,3 +475,48 @@ class TestSignInRedeemedPush:
         client, _ = _authed_client()
         r = client.get("/accounts/check-email/")
         assert b"/ws/signin/" not in r.content
+
+
+# ---------------------------------------------------------------------------
+# Friends page
+# ---------------------------------------------------------------------------
+@pytest.mark.django_db
+class TestFriendsPage:
+    def test_request_then_accept_creates_mutual_friendship(self) -> None:
+        from apps.accounts.models import Friendship
+
+        client_a, alice = _authed_client()
+        client_b, bob = _authed_client()
+        r = client_a.post("/accounts/friends/", {"action": "add", "nickname": bob.nickname})
+        assert r.status_code == 302
+        row = Friendship.objects.get(from_user=alice, to_user=bob)
+        assert row.status == Friendship.STATUS_PENDING
+        client_b.post("/accounts/friends/", {"action": "accept", "id": row.pk})
+        assert bob.id in Friendship.friend_ids(alice)
+        assert alice.id in Friendship.friend_ids(bob)
+
+    def test_adding_back_a_pending_request_accepts_it(self) -> None:
+        from apps.accounts.models import Friendship
+
+        client_a, alice = _authed_client()
+        client_b, bob = _authed_client()
+        client_a.post("/accounts/friends/", {"action": "add", "nickname": bob.nickname})
+        client_b.post("/accounts/friends/", {"action": "add", "nickname": alice.nickname})
+        assert bob.id in Friendship.friend_ids(alice)
+
+    def test_unknown_nickname_shows_error(self) -> None:
+        client, _ = _authed_client()
+        r = client.post("/accounts/friends/", {"action": "add", "nickname": "nobody-here"})
+        assert r.status_code == 200
+        assert b"No one goes by that nickname" in r.content
+
+    def test_remove_friend(self) -> None:
+        from apps.accounts.models import Friendship
+
+        client_a, alice = _authed_client()
+        _, bob = _authed_client()
+        row = Friendship.objects.create(
+            from_user=alice, to_user=bob, status=Friendship.STATUS_ACCEPTED
+        )
+        client_a.post("/accounts/friends/", {"action": "remove", "id": row.pk})
+        assert Friendship.friend_ids(alice) == set()

@@ -58,6 +58,21 @@ def _chattiness_compatible(qs, my_chattiness: str):
     return qs.filter(chattiness__in=[my_chattiness, PoolTicket.CHATTINESS_FLEXIBLE])
 
 
+def _friends_compatible(qs, ticket: PoolTicket):
+    """Apply the friends-only hard rule in both directions.
+
+    Friendship is mutual, so one friend-ids lookup serves both checks:
+    my friends-only ticket may only see my friends; a candidate who set
+    friends-only may only be seen by THEIR friends (= my friends, when
+    the pair would be friends)."""
+    from apps.accounts.models import Friendship  # lazy: avoid app-load cycles
+
+    friends = Friendship.friend_ids(ticket.user)
+    if ticket.friends_only:
+        return qs.filter(user_id__in=friends)
+    return qs.filter(Q(friends_only=False) | Q(user_id__in=friends))
+
+
 def _work_mode_compatible(qs, my_work_mode: str):
     """Filter to work-mode-compatible candidates.
 
@@ -109,10 +124,13 @@ class PreferenceMatchingStrategy:
             .filter(status=PoolTicket.STATUS_WAITING)
             .exclude(user_id=ticket.user_id)
         )
-        # The ONE filter that's applied to every phase. Chattiness has a
-        # hard compatibility rule — we'd rather strand a user than pair
-        # them with someone they explicitly don't want.
+        # Filters applied to every phase. Chattiness has a hard
+        # compatibility rule — we'd rather strand a user than pair them
+        # with someone they explicitly don't want. Friends-only is
+        # equally hard: a friends-only ticket pairs only with friends,
+        # and a friends-only CANDIDATE is only visible to their friends.
         base_qs = _chattiness_compatible(base_qs, ticket.chattiness)
+        base_qs = _friends_compatible(base_qs, ticket)
 
         now = timezone.now()
         for phase in self._phases():

@@ -187,6 +187,15 @@ class PoolTicket(TimeStampedModel):
         help_text="Conversational preference. Hard compat rule in the matcher.",
     )
 
+    # Friends-only is a HARD rule like chattiness: when set, only users
+    # on the requester's friends list can be paired with this ticket
+    # (and friendship is mutual, so the reverse also holds). Never
+    # loosened by the phase schedule.
+    friends_only = models.BooleanField(
+        default=False,
+        help_text="Only match with people on my friends list.",
+    )
+
     # Work mode is a SOFT preference. Strategy starts strict (only same
     # work_mode or 'any' pair) then loosens after BODY_DOUBLE_FALLBACK_S
     # so a niche-mode user isn't stranded forever.

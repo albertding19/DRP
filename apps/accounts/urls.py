@@ -32,6 +32,7 @@ urlpatterns = [
     ),
     # Authed-only:
     path("claim/", views.claim, name="claim"),
+    path("friends/", views.friends, name="friends"),
     path("settings/", views.settings_page, name="settings"),
     path("settings/nickname/", views.settings_nickname, name="settings_nickname"),
     path("settings/email/", views.settings_email, name="settings_email"),

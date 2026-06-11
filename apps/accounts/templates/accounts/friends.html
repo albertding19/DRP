@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+
+{% block title %}Friends — {{ PROJECT_NAME }}{% endblock %}
+
+{% block content %}
+<section class="friends-page">
+  <h1>Friends</h1>
+  <p class="lead">
+    Add people by nickname. Friends can body double together — tick
+    “Friends only” when <a href="{% url 'body_double:index' %}">finding a body double</a>.
+  </p>
+
+  {% if error %}<div class="notice-error">{{ error }}</div>{% endif %}
+
+  <form method="post" class="add-form">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="add">
+    <input type="text" name="nickname" placeholder="Their nickname" maxlength="24" required>
+    <button type="submit" class="btn btn-primary">Add friend</button>
+  </form>
+
+  {% if incoming %}
+    <h2>Requests for you</h2>
+    <ul class="friend-list">
+      {% for f in incoming %}
+        <li>
+          <strong>{{ f.from_user.nickname }}</strong>
+          <form method="post" style="display:inline">{% csrf_token %}
+            <input type="hidden" name="action" value="accept">
+            <input type="hidden" name="id" value="{{ f.pk }}">
+            <button type="submit" class="btn btn-success">Accept</button>
+          </form>
+          <form method="post" style="display:inline">{% csrf_token %}
+            <input type="hidden" name="action" value="remove">
+            <input type="hidden" name="id" value="{{ f.pk }}">
+            <button type="submit" class="btn btn-secondary">Decline</button>
+          </form>
+        </li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+
+  <h2>Your friends ({{ friends_list|length }})</h2>
+  {% if friends_list %}
+    <ul class="friend-list">
+      {% for item in friends_list %}
+        <li>
+          <strong>{{ item.user.nickname }}</strong>
+          <form method="post" style="display:inline">{% csrf_token %}
+            <input type="hidden" name="action" value="remove">
+            <input type="hidden" name="id" value="{{ item.row.pk }}">
+            <button type="submit" class="btn btn-secondary">Remove</button>
+          </form>
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p class="empty-line">No friends yet — body double with someone and swap nicknames.</p>
+  {% endif %}
+
+  {% if outgoing %}
+    <h2>Sent requests</h2>
+    <ul class="friend-list">
+      {% for f in outgoing %}
+        <li>
+          <strong>{{ f.to_user.nickname }}</strong> <small class="muted">pending</small>
+          <form method="post" style="display:inline">{% csrf_token %}
+            <input type="hidden" name="action" value="remove">
+            <input type="hidden" name="id" value="{{ f.pk }}">
+            <button type="submit" class="btn btn-secondary">Cancel</button>
+          </form>
+        </li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+</section>
+{% endblock %}
+
+{% block head_extra %}
+<style>
+  /* Inline per repo convention — reuses site.css tokens. */
+  .friends-page { max-width: 560px; }
+  .friends-page h1 { font-family: var(--font-serif); font-size: 2rem; margin: 0 0 0.5rem; }
+  .friends-page h2 { font-family: var(--font-serif); font-size: 1.15rem; margin: 1.5rem 0 0.5rem; }
+  .friends-page .lead { color: var(--ink-muted, var(--fg-muted)); margin: 0 0 1.25rem; }
+  .friends-page .lead a { color: var(--terracotta, var(--accent)); }
+  .add-form { display: flex; gap: 0.5rem; }
+  .add-form input[type="text"] { flex: 1; padding: 0.5rem 0.75rem; border: 1px solid var(--border); border-radius: 6px; }
+  .friend-list { list-style: none; margin: 0; padding: 0; }
+  .friend-list li { display: flex; gap: 0.6rem; align-items: center; padding: 0.5rem 0; border-bottom: 1px solid var(--border); }
+  .friend-list strong { flex: 1; }
+  .empty-line { color: var(--fg-muted); font-size: 0.9rem; }
+  .muted { color: var(--fg-muted); }
+  .notice-error { background: #fee2e2; border-radius: 8px; padding: 0.6rem 0.9rem; margin: 0.75rem 0; font-size: 0.9rem; }
+</style>
+{% endblock %}

@@ -429,13 +429,15 @@ class TestInsertBreak:
     def test_preserves_order_no_resort(self, _break_settings) -> None:
         u = _user("br6")
         # Two pending tasks scheduled at different future times. Their
-        # relative order must not change after the break.
-        now = timezone.now()
+        # relative order must not change after the break. Pinned to noon
+        # so the shifted tasks can't cross work_end and drop to backlog
+        # when the suite runs in the evening.
+        now = timezone.localtime().replace(hour=12, minute=0, second=0, microsecond=0)
         t1 = create_task(user=u, name="first", duration_minutes=30, priority=Task.PRIORITY_LOW)
         t2 = create_task(user=u, name="second", duration_minutes=30, priority=Task.PRIORITY_HIGH)
         Task.objects.filter(pk=t1.pk).update(scheduled_start=now + timedelta(minutes=5))
         Task.objects.filter(pk=t2.pk).update(scheduled_start=now + timedelta(minutes=40))
-        insert_break(user=u, duration_minutes=15)
+        insert_break(user=u, duration_minutes=15, now=now)
         t1.refresh_from_db()
         t2.refresh_from_db()
         assert t1.scheduled_start < t2.scheduled_start

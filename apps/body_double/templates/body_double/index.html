@@ -65,6 +65,17 @@
       <small class="row-hint">Helps you pair with someone in a similar mode. We'll loosen this after a minute if no one fits.</small>
     </fieldset>
 
+    <fieldset class="needs-row">
+      <legend>Who with?</legend>
+      <label class="pill">
+        <input type="checkbox" name="friends_only" value="1"> 👥 Friends only
+      </label>
+      <small class="row-hint">
+        Only match with people on your <a href="{% url 'accounts:friends' %}">friends list</a>.
+        Leave off to match with anyone.
+      </small>
+    </fieldset>
+
     {% if user_communities %}
       <fieldset class="needs-row">
         <legend>Community <small class="legend-meta">(optional)</small></legend>

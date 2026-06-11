@@ -94,6 +94,7 @@ def enqueue(  # type: ignore[no-untyped-def]
     duration_minutes: int = 30,
     chattiness: str = PoolTicket.CHATTINESS_FLEXIBLE,
     work_mode: str = PoolTicket.WORK_MODE_ANY,
+    friends_only: bool = False,
 ) -> tuple[PoolTicket, BodyDoubleSession | None]:
     """Add `user` to the matchmaking pool with their stated preferences.
 
@@ -126,6 +127,7 @@ def enqueue(  # type: ignore[no-untyped-def]
             duration_minutes=duration_minutes,
             chattiness=chattiness,
             work_mode=work_mode,
+            friends_only=friends_only,
             status=PoolTicket.STATUS_WAITING,
         )
     except IntegrityError as exc:

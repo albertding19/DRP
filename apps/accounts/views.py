@@ -15,6 +15,7 @@ import logging
 import secrets
 
 from django.contrib.auth import login
+from django.db.models import Q
 from django.http import HttpRequest, HttpResponse, HttpResponseBadRequest, JsonResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse
@@ -534,3 +535,76 @@ def logout(request: HttpRequest) -> HttpResponse:
     """Clear session and bounce back to welcome."""
     request.session.flush()
     return redirect(reverse("accounts:start"))
+
+
+# ---------------------------------------------------------------------------
+# Friends
+# ---------------------------------------------------------------------------
+@require_http_methods(["GET", "POST"])
+def friends(request: HttpRequest) -> HttpResponse:
+    """Friends list: accepted friends, incoming/outgoing requests, and an
+    add-by-nickname form. POST actions: add / accept / remove."""
+    from .models import Friendship
+
+    error = None
+    if request.method == "POST":
+        action = request.POST.get("action") or ""
+        if action == "add":
+            nickname = (request.POST.get("nickname") or "").strip()
+            target = User.objects.filter(nickname=nickname, is_active=True).first()
+            if target is None:
+                error = "No one goes by that nickname."
+            elif target.id == request.user.id:
+                error = "That's you."
+            elif target.id in Friendship.friend_ids(request.user):
+                error = "Already friends."
+            else:
+                # A request the other way pending? Accept it instead.
+                reverse_req = Friendship.objects.filter(
+                    from_user=target, to_user=request.user, status=Friendship.STATUS_PENDING
+                ).first()
+                if reverse_req:
+                    reverse_req.status = Friendship.STATUS_ACCEPTED
+                    reverse_req.save(update_fields=["status"])
+                else:
+                    Friendship.objects.get_or_create(from_user=request.user, to_user=target)
+        elif action == "accept":
+            Friendship.objects.filter(
+                pk=request.POST.get("id"),
+                to_user=request.user,
+                status=Friendship.STATUS_PENDING,
+            ).update(status=Friendship.STATUS_ACCEPTED)
+        elif action == "remove":
+            # Removes a friend OR cancels/declines a request — any row
+            # this user is part of.
+            Friendship.objects.filter(pk=request.POST.get("id")).filter(
+                Q(from_user=request.user) | Q(to_user=request.user)
+            ).delete()
+        if error is None:
+            return redirect(reverse("accounts:friends"))
+
+    accepted = (
+        Friendship.objects.filter(status=Friendship.STATUS_ACCEPTED)
+        .filter(Q(from_user=request.user) | Q(to_user=request.user))
+        .select_related("from_user", "to_user")
+    )
+    friends_list = [
+        {"row": f, "user": f.to_user if f.from_user_id == request.user.id else f.from_user}
+        for f in accepted
+    ]
+    incoming = Friendship.objects.filter(
+        to_user=request.user, status=Friendship.STATUS_PENDING
+    ).select_related("from_user")
+    outgoing = Friendship.objects.filter(
+        from_user=request.user, status=Friendship.STATUS_PENDING
+    ).select_related("to_user")
+    return render(
+        request,
+        "accounts/friends.html",
+        {
+            "friends_list": friends_list,
+            "incoming": incoming,
+            "outgoing": outgoing,
+            "error": error,
+        },
+    )

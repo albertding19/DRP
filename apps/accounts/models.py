@@ -193,3 +193,48 @@ class SignInToken(models.Model):
     def default_expiry(cls) -> models.DateTimeField:
         """Helper for callers that need the canonical expiry timestamp."""
         return timezone.now() + timedelta(minutes=settings.SIGNIN_TOKEN_TTL_MIN)
+
+
+class Friendship(models.Model):
+    """A friend connection between two users.
+
+    Lifecycle: `pending` (request sent) → `accepted` (mutual). One row
+    per pair, direction = who asked. Friendship is symmetric once
+    accepted — use `Friendship.friend_ids(user)` everywhere instead of
+    querying a direction by hand.
+    """
+
+    STATUS_PENDING = "pending"
+    STATUS_ACCEPTED = "accepted"
+    STATUS_CHOICES = [(STATUS_PENDING, "Pending"), (STATUS_ACCEPTED, "Accepted")]
+
+    from_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="friendships_sent"
+    )
+    to_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="friendships_received"
+    )
+    status = models.CharField(
+        max_length=10, choices=STATUS_CHOICES, default=STATUS_PENDING, db_index=True
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["from_user", "to_user"], name="one_request_per_pair"),
+        ]
+
+    def __str__(self) -> str:
+        return f"friendship {self.from_user_id}→{self.to_user_id} ({self.status})"
+
+    @classmethod
+    def friend_ids(cls, user) -> set[int]:
+        """Ids of everyone `user` has an ACCEPTED friendship with,
+        regardless of who asked."""
+        ids: set[int] = set()
+        rows = cls.objects.filter(status=cls.STATUS_ACCEPTED).filter(
+            models.Q(from_user=user) | models.Q(to_user=user)
+        )
+        for a, b in rows.values_list("from_user_id", "to_user_id"):
+            ids.add(b if a == user.id else a)
+        return ids

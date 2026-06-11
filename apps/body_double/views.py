@@ -187,6 +187,7 @@ def find(request: HttpRequest) -> HttpResponse:
             duration_minutes=duration,
             chattiness=chattiness,
             work_mode=work_mode,
+            friends_only=bool(request.POST.get("friends_only")),
         )
     except AlreadyInPoolError:
         # User already had an active ticket — route them to the right

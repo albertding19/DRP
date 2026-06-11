@@ -60,6 +60,7 @@
           <li><a href="{% url 'home' %}" class="{% if vn == 'home' %}active{% endif %}">Home</a></li>
           <li><a href="{% url 'tasks:index' %}" class="{% if 'tasks' in vn %}active{% endif %}">Tasks</a></li>
           <li><a href="{% url 'body_double:index' %}" class="{% if 'body_double' in vn %}active{% endif %}">Body double</a></li>
+          <li><a href="{% url 'accounts:friends' %}" class="{% if vn == 'accounts:friends' %}active{% endif %}">Friends</a></li>
           <li><a href="{% url 'communities:list' %}" class="{% if 'communities' in vn %}active{% endif %}">Communities</a></li>
           <li><a href="{% url 'posts:feed' %}" class="{% if 'posts:' in vn %}active{% endif %}">Feed</a></li>
         </ul>
