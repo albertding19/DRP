@@ -33,7 +33,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.module_loading import import_string
-from django.views.decorators.http import require_GET, require_POST
+from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
 from .models import BodyDoubleSession, PoolTicket, ScheduledBooking
 from .services import (
@@ -49,7 +49,9 @@ from .services import (
     cancel_waiting,
     end_session,
     enqueue,
+    find_hoppable_room,
     get_active_ticket,
+    hop_to_room,
     request_refill,
     upcoming_bookings,
 )
@@ -314,6 +316,27 @@ def refill(request: HttpRequest, session_id: int) -> JsonResponse:
     if ticket is None:
         return JsonResponse({"status": "ended"})
     return JsonResponse({"status": "matched" if matched_now else "waiting"})
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def hop(request: HttpRequest, session_id: int) -> HttpResponse:
+    """GET: is there another survivor's room to join? (polled quietly by
+    the lonely room page to decide whether to show the button.)
+    POST: leave this room and join it."""
+    session = get_object_or_404(BodyDoubleSession, pk=session_id)
+    if not session.includes(request.user):
+        raise Http404("No such session.")
+    if request.method == "GET":
+        return JsonResponse({"available": find_hoppable_room(user=request.user) is not None})
+    try:
+        target = hop_to_room(session=session, user=request.user)
+    except NotInSessionError:
+        raise Http404("No such session.") from None
+    if target is None:
+        # Raced away — stay put; the room page carries on refilling.
+        return redirect("body_double:room", session_id=session.id)
+    return redirect("body_double:room", session_id=target.id)
 
 
 # ---------------------------------------------------------------------------

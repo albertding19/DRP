@@ -198,3 +198,92 @@ class TestRefillView:
         stranger = _user("rfv_s3")
         r = self._client_for(stranger).post(f"/body-double/sessions/{session.id}/refill/")
         assert r.status_code == 404
+
+
+def _two_lonely_rooms(tag: str):
+    """Two sessions formed FIRST (so the setups can't cross-match), then
+    both partners leave and both survivors request refills. Returns
+    (alice, session_a, carol, session_b)."""
+    alice, bob = _user(f"tl_a_{tag}"), _user(f"tl_b_{tag}")
+    enqueue(user=alice)
+    _, session_a = enqueue(user=bob)
+    carol, dave = _user(f"tl_c_{tag}"), _user(f"tl_d_{tag}")
+    enqueue(user=carol)
+    _, session_b = enqueue(user=dave)
+    end_session(session=session_a, user=bob)
+    end_session(session=session_b, user=dave)
+    request_refill(session=session_a, user=alice)
+    request_refill(session=session_b, user=carol)
+    return alice, session_a, carol, session_b
+
+
+@pytest.mark.django_db(transaction=True)
+class TestHop:
+    """A lonely survivor may CHOOSE to abandon their room and join
+    another survivor's — the manual counterpart to auto-refill."""
+
+    def test_hop_joins_other_survivors_room(self) -> None:
+        alice, session_a, carol, session_b = _two_lonely_rooms("hop1")
+
+        from apps.body_double.services import hop_to_room
+
+        target = hop_to_room(session=session_b, user=carol)
+        assert target is not None
+        assert target.pk == session_a.pk
+        # Carol's old room is ended (she was the last one attached).
+        session_b.refresh_from_db()
+        assert session_b.status == BodyDoubleSession.STATUS_ENDED
+        # Alice's room now holds both, both MATCHED.
+        session_a.refresh_from_db()
+        assert {session_a.user_a_id, session_a.user_b_id} == {alice.id, carol.id}
+        assert PoolTicket.objects.get(user=alice).status == PoolTicket.STATUS_MATCHED
+        new_carol = PoolTicket.objects.filter(user=carol, status=PoolTicket.STATUS_MATCHED).get()
+        assert new_carol.session_id == session_a.pk
+
+    def test_no_room_returns_none(self) -> None:
+        bob, session_b, _ = _survivor_setup("hop3")
+        from apps.body_double.services import hop_to_room
+
+        assert hop_to_room(session=session_b, user=bob) is None
+        session_b.refresh_from_db()
+        assert session_b.status == BodyDoubleSession.STATUS_ACTIVE
+
+    def test_chattiness_incompatible_room_not_offered(self) -> None:
+        # Quiet survivor must not be offered a chatty survivor's room.
+        from apps.body_double.services import find_hoppable_room
+
+        alice, bob = _user("hp_a_q"), _user("hp_b_q")
+        enqueue(user=alice, chattiness=PoolTicket.CHATTINESS_CHATTY)
+        _, session = enqueue(user=bob, chattiness=PoolTicket.CHATTINESS_CHATTY)
+        end_session(session=session, user=bob)
+        request_refill(session=session, user=alice)  # chatty refill waiting
+
+        carol = _user("hp_c_q")
+        enqueue(user=carol, chattiness=PoolTicket.CHATTINESS_QUIET)
+        assert find_hoppable_room(user=carol) is None
+
+    def test_hop_view_get_reports_availability_and_post_redirects(self) -> None:
+        from django.test import Client
+
+        _alice, session_a, carol, session_b = _two_lonely_rooms("hopv1")
+        client = Client()
+        s = client.session
+        s["user_id"] = carol.id
+        s.save()
+
+        r = client.get(f"/body-double/sessions/{session_b.id}/hop/")
+        assert r.json() == {"available": True}
+        r = client.post(f"/body-double/sessions/{session_b.id}/hop/")
+        assert r.status_code == 302
+        assert r.url == f"/body-double/room/{session_a.id}/"
+
+    def test_hop_view_get_false_when_no_rooms(self) -> None:
+        from django.test import Client
+
+        bob, session_b, _ = _survivor_setup("hopv3")
+        client = Client()
+        s = client.session
+        s["user_id"] = bob.id
+        s.save()
+        r = client.get(f"/body-double/sessions/{session_b.id}/hop/")
+        assert r.json() == {"available": False}

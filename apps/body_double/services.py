@@ -300,6 +300,78 @@ def _attach_refill(
     )
 
 
+def find_hoppable_room(*, user) -> PoolTicket | None:  # type: ignore[no-untyped-def]
+    """Another survivor's refill ticket `user` could join — i.e. a
+    WAITING ticket anchored to someone else's ACTIVE session, chattiness-
+    compatible with `user`'s current ticket. Oldest wait first."""
+    from .matching.preferences import _chattiness_compatible
+
+    mine = get_active_ticket(user=user)
+    chattiness = mine.chattiness if mine else PoolTicket.CHATTINESS_FLEXIBLE
+    qs = (
+        PoolTicket.objects.filter(
+            status=PoolTicket.STATUS_WAITING,
+            session__isnull=False,
+            session__status=BodyDoubleSession.STATUS_ACTIVE,
+        )
+        .exclude(user=user)
+        .select_related("session")
+    )
+    return _chattiness_compatible(qs, chattiness).order_by("created_at").first()
+
+
+@transaction.atomic
+def hop_to_room(*, session: BodyDoubleSession, user) -> BodyDoubleSession | None:  # type: ignore[no-untyped-def]
+    """Leave `session` and join another survivor's room instead.
+
+    The counterpart to the auto-refill: two lonely survivors are never
+    paired automatically (each is anchored to their own room), but either
+    may CHOOSE to abandon their room and hop into the other's. Leaving
+    reuses `end_session` semantics — the abandoned room ends if the
+    hopper was the last one attached.
+
+    Returns the target session, or None if no compatible room exists
+    (the button shouldn't have been shown; harmless race).
+    """
+    if not session.includes(user):
+        raise NotInSessionError("Only the session participants can hop.")
+
+    candidate = find_hoppable_room(user=user)
+    if candidate is None:
+        return None
+    # Re-lock the target under FOR UPDATE and re-verify it's still open.
+    target_ticket = (
+        PoolTicket.objects.select_for_update()
+        .filter(pk=candidate.pk, status=PoolTicket.STATUS_WAITING)
+        .first()
+    )
+    if target_ticket is None:
+        return None
+    target_session = (
+        BodyDoubleSession.objects.select_for_update()
+        .filter(pk=target_ticket.session_id, status=BodyDoubleSession.STATUS_ACTIVE)
+        .first()
+    )
+    if target_session is None:
+        return None
+
+    # Carry my preferences over before leaving retires my ticket.
+    mine = get_active_ticket(user=user)
+    end_session(session=session, user=user)
+    new_ticket = PoolTicket.objects.create(
+        user=user,
+        status=PoolTicket.STATUS_WAITING,
+        duration_minutes=mine.duration_minutes if mine else 30,
+        chattiness=mine.chattiness if mine else PoolTicket.CHATTINESS_FLEXIBLE,
+        work_mode=mine.work_mode if mine else PoolTicket.WORK_MODE_ANY,
+        community=mine.community if mine else None,
+    )
+    _attach_refill(session=target_session, refill_ticket=target_ticket, joining_ticket=new_ticket)
+    # No broadcast: the target survivor is in the room, not on the
+    # waiting page — the hopper simply appears as a new tile.
+    return target_session
+
+
 @transaction.atomic
 def request_refill(  # type: ignore[no-untyped-def]
     *, session: BodyDoubleSession, user

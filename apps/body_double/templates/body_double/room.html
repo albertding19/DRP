@@ -66,6 +66,21 @@
   </div>
 
   <p id="status" class="status" aria-live="polite">Connecting…</p>
+
+  {% comment %}Appears quietly (no modal, no sound) only while the user
+     is alone AND another survivor's room is open to join. POST navigates
+     them into that room.{% endcomment %}
+  <form
+    id="hop-form"
+    method="post"
+    action="{% url 'body_double:hop' session_id=session.id %}"
+    class="hop-offer"
+    hidden
+  >
+    {% csrf_token %}
+    <button type="submit" class="btn btn-secondary">Join another room →</button>
+    <small class="muted">Someone else is also waiting for a body double.</small>
+  </form>
 </section>
 
 <script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
@@ -227,6 +242,7 @@
     })
     .on(LivekitClient.RoomEvent.ParticipantConnected, (participant) => {
       cancelRefillTimer();
+      stopHopPolling();
       appendSystem(participant.identity + " joined.");
       setStatus("Connected.");
       /* A refill partner may differ from the server-rendered name. */
@@ -251,12 +267,39 @@
      refreshes; a reconnect cancels the request. Deliberately low-key:
      one status line, no modal, no navigation — the user keeps working. */
   const REFILL_URL = "{% url 'body_double:refill' session_id=session.id %}";
+  const HOP_URL = "{% url 'body_double:hop' session_id=session.id %}";
   const INDEX_URL = "{% url 'body_double:index' %}";
   const REFILL_GRACE_MS = 10000;
+  const HOP_POLL_MS = 10000;
   let refillTimer = null;
+  let hopPoll = null;
 
   const remoteCount = () =>
     (room.remoteParticipants || room.participants || new Map()).size;
+
+  const hopForm = document.getElementById("hop-form");
+
+  /* While alone, quietly check every 10s whether another survivor's room
+     is open; the button appears/disappears with no other fanfare. */
+  const startHopPolling = () => {
+    if (hopPoll) return;
+    const check = async () => {
+      if (remoteCount() > 0) return;
+      try {
+        const r = await fetch(HOP_URL, { credentials: "same-origin", cache: "no-store" });
+        if (!r.ok) return;
+        const data = await r.json();
+        hopForm.hidden = !data.available;
+      } catch (e) { /* ignore — next tick */ }
+    };
+    check();
+    hopPoll = setInterval(check, HOP_POLL_MS);
+  };
+
+  const stopHopPolling = () => {
+    if (hopPoll) { clearInterval(hopPoll); hopPoll = null; }
+    hopForm.hidden = true;
+  };
 
   const cancelRefillTimer = () => {
     if (refillTimer) { clearTimeout(refillTimer); refillTimer = null; }
@@ -265,6 +308,7 @@
   const scheduleRefill = () => {
     if (remoteCount() > 0) return;
     setStatus("Your body double left — finding you a new one…");
+    startHopPolling();
     cancelRefillTimer();
     refillTimer = setTimeout(async () => {
       refillTimer = null;
@@ -372,5 +416,8 @@
   .unread-badge { background: #c00; color: white; border-radius: 999px; padding: 0 0.4rem; font-size: 0.7rem; margin-left: 0.4rem; }
 
   .status { font-size: 0.875rem; color: var(--fg-muted); margin: 0.5rem 0; }
+  .hop-offer { display: flex; gap: 0.6rem; align-items: center; margin: 0.5rem 0; }
+  .hop-offer[hidden] { display: none; }
+  .hop-offer .muted { color: var(--fg-muted); font-size: 0.82rem; }
 </style>
 {% endblock %}
