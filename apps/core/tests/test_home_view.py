@@ -244,3 +244,33 @@ class TestPanelCrashIsolation:
         # The other panels are still there.
         assert b'id="panel-tasks"' in r.content
         assert b'id="panel-feed"' in r.content
+
+
+@pytest.mark.django_db
+class TestForumChromeScoping:
+    """The header search bar and the sidebar Categories are forum
+    affordances — they must render on the feed/search pages and nowhere
+    else (home, tasks, body double…)."""
+
+    def test_home_has_no_search_or_categories(self) -> None:
+        client, _ = _authed("chrome1")
+        body = client.get("/").content
+        assert b"site-search" not in body
+        assert b"Categories" not in body
+
+    def test_feed_has_search_and_categories(self) -> None:
+        client, _ = _authed("chrome2")
+        body = client.get("/feed/").content
+        assert b"site-search" in body
+        assert b"Categories" in body
+
+    def test_search_page_keeps_search_bar(self) -> None:
+        client, _ = _authed("chrome3")
+        body = client.get("/search/?q=focus").content
+        assert b"site-search" in body
+
+    def test_tasks_page_has_neither(self) -> None:
+        client, _ = _authed("chrome4")
+        body = client.get("/tasks/").content
+        assert b"site-search" not in body
+        assert b"Categories" not in body

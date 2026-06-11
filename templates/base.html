@@ -22,15 +22,24 @@
     <a href="/" class="site-brand">{{ PROJECT_NAME }}</a>
     <span class="site-tagline">{{ PROJECT_TAGLINE }}</span>
     {% if request.user.is_authenticated %}
-      <form action="/search/" method="get" class="site-search" role="search">
-        <input
-          type="search"
-          name="q"
-          placeholder="Search strategies…"
-          aria-label="Search strategies"
-          value="{{ request.GET.q|default:'' }}"
-        >
-      </form>
+      {% comment %}
+        Search is a FORUM affordance — it queries posts, so it only
+        renders on forum pages (feed / post detail / search results).
+        Elsewhere (home, tasks, body double…) it would just be noise.
+      {% endcomment %}
+      {% with vn=request.resolver_match.view_name|default:"" %}
+        {% if 'posts:' in vn or 'search:' in vn %}
+          <form action="/search/" method="get" class="site-search" role="search">
+            <input
+              type="search"
+              name="q"
+              placeholder="Search strategies…"
+              aria-label="Search strategies"
+              value="{{ request.GET.q|default:'' }}"
+            >
+          </form>
+        {% endif %}
+      {% endwith %}
       <span class="site-user">{{ request.user.nickname }}</span>
     {% endif %}
   </header>
@@ -55,17 +64,24 @@
           <li><a href="{% url 'posts:feed' %}" class="{% if 'posts:' in vn %}active{% endif %}">Feed</a></li>
         </ul>
 
-        <hr>
+        {% comment %}
+          Categories are forum navigation (tag filters on the feed) —
+          only shown alongside forum pages, same scoping as the header
+          search bar.
+        {% endcomment %}
+        {% if 'posts:' in vn or 'search:' in vn %}
+          <hr>
 
-        <h3>Categories</h3>
-        <ul>
-          <li><a href="{% url 'posts:feed' %}">All strategies</a></li>
-          <li><a href="{% url 'posts:feed' %}?tag=focus-and-attention">Focus &amp; attention</a></li>
-          <li><a href="{% url 'posts:feed' %}?tag=time-management">Time management</a></li>
-          <li><a href="{% url 'posts:feed' %}?tag=emotional-regulation">Emotional regulation</a></li>
-          <li><a href="{% url 'posts:feed' %}?tag=sleep-and-routine">Sleep &amp; routine</a></li>
-          <li><a href="{% url 'posts:feed' %}?tag=on-the-waitlist">On the waitlist</a></li>
-        </ul>
+          <h3>Categories</h3>
+          <ul>
+            <li><a href="{% url 'posts:feed' %}">All strategies</a></li>
+            <li><a href="{% url 'posts:feed' %}?tag=focus-and-attention">Focus &amp; attention</a></li>
+            <li><a href="{% url 'posts:feed' %}?tag=time-management">Time management</a></li>
+            <li><a href="{% url 'posts:feed' %}?tag=emotional-regulation">Emotional regulation</a></li>
+            <li><a href="{% url 'posts:feed' %}?tag=sleep-and-routine">Sleep &amp; routine</a></li>
+            <li><a href="{% url 'posts:feed' %}?tag=on-the-waitlist">On the waitlist</a></li>
+          </ul>
+        {% endif %}
       </nav>
       <main class="site-main">
     {% endwith %}

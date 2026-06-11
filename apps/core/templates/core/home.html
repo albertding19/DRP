@@ -86,8 +86,8 @@
           </p>
           <a class="btn btn-secondary" href="{% url 'body_double:schedule' %}">View schedule →</a>
         {% else %}
-          {# Link, not a POST: route through the preferences page so the
-             user states duration/chattiness/work-mode before queueing. #}
+          {% comment %}Link, not a POST: route through the preferences page
+             so the user states duration/chattiness/work-mode first.{% endcomment %}
           <a class="btn btn-primary" href="{% url 'body_double:index' %}">Find me someone</a>
           <p class="muted small panel-footer">Work alongside a stranger for a quick focus session.</p>
         {% endif %}
