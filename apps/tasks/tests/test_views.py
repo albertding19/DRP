@@ -193,3 +193,29 @@ class TestNonHtmxFallback:
         r = client.post("/tasks/add/", {"name": "A", "duration_minutes": "30"})
         assert r.status_code == 302
         assert r.url == "/tasks/"
+
+
+@pytest.mark.django_db
+class TestRegionPartial:
+    """GET /tasks/region/ serves the bare #full-region partial so other
+    pages (the body-double room) can embed the live timetable."""
+
+    def test_returns_partial_without_page_chrome(self, client_with_session) -> None:
+        client, user = client_with_session
+        from django.utils import timezone
+
+        from apps.tasks.models import Task
+
+        Task.objects.create(
+            user=user, name="Embedded task", duration_minutes=30, scheduled_start=timezone.now()
+        )
+        r = client.get("/tasks/region/")
+        assert r.status_code == 200
+        assert b"Embedded task" in r.content
+        # Partial only — no <html> shell.
+        assert b"<html" not in r.content
+
+    def test_anon_redirected(self) -> None:
+        from django.test import Client
+
+        assert Client().get("/tasks/region/").status_code == 302

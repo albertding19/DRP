@@ -67,6 +67,22 @@
 
   <p id="status" class="status" aria-live="polite">Connecting…</p>
 
+  {% comment %}The live timetable, embedded. hx-get pulls the same
+     #full-region partial the tasks page uses; every row action inside
+     (start / done / skip / break) hx-posts and re-renders the region in
+     place — fully updatable without leaving the call.{% endcomment %}
+  <details class="room-timetable">
+    <summary>📅 My timetable</summary>
+    <div
+      id="full-region"
+      hx-get="{% url 'tasks:region' %}"
+      hx-trigger="load once"
+      hx-swap="innerHTML"
+    >
+      <p class="empty-line">Loading your timetable…</p>
+    </div>
+  </details>
+
   {% comment %}Appears quietly (no modal, no sound) only while the user
      is alone AND another survivor's room is open to join. POST navigates
      them into that room.{% endcomment %}
@@ -446,5 +462,39 @@
   .hop-offer { display: flex; gap: 0.6rem; align-items: center; margin: 0.5rem 0; }
   .hop-offer[hidden] { display: none; }
   .hop-offer .muted { color: var(--fg-muted); font-size: 0.82rem; }
+
+  /* Embedded timetable — compact copy of the tasks page's region styles
+     (per-page styles are the repo convention, so the partial brings no
+     CSS of its own). */
+  .room-timetable { margin: 1rem 0; }
+  .room-timetable summary {
+    cursor: pointer;
+    font-weight: 600;
+    font-family: var(--font-serif, inherit);
+    padding: 0.5rem 0;
+  }
+  .room-timetable .section-card { background: white; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 1rem; }
+  .room-timetable .section-card-header { display: flex; align-items: center; justify-content: space-between; padding: 0.6rem 1rem; border-bottom: 1px solid var(--border); }
+  .room-timetable .section-card-header h2 { margin: 0; font-size: 1rem; }
+  .room-timetable .section-card-body { padding: 0.6rem 1rem; }
+  .room-timetable .empty-line { color: var(--fg-muted); font-size: 0.875rem; padding: 0.5rem 0; }
+  .room-timetable .task-row, .room-timetable .busy-row, .room-timetable .backlog-row {
+    display: flex; align-items: center; gap: 0.6rem; padding: 0.45rem 0;
+    border-bottom: 1px solid var(--border); font-size: 0.9rem;
+  }
+  .room-timetable .task-row:last-child, .room-timetable .busy-row:last-child, .room-timetable .backlog-row:last-child { border-bottom: 0; }
+  .room-timetable .time { color: var(--fg-muted); min-width: 3rem; }
+  .room-timetable .name { flex: 1; }
+  .room-timetable .duration { color: var(--fg-muted); font-size: 0.8rem; margin-left: 0.4rem; }
+  .room-timetable .actions { display: flex; gap: 0.3rem; }
+  .room-timetable .actions .btn { font-size: 0.78rem; padding: 0.25rem 0.6rem; }
+  .room-timetable .badge { border-radius: 999px; padding: 0.1rem 0.5rem; font-size: 0.7rem; margin-left: 0.35rem; }
+  .room-timetable .badge-high { background: #fee; color: #c00; }
+  .room-timetable .badge-bd { background: #e3eaff; color: #1e3a8a; }
+  .room-timetable .badge-in-progress { background: #e6f4ea; color: #0a6b2c; }
+  .room-timetable .badge-paused { background: #f0f0f0; color: var(--fg-muted); }
+  .room-timetable .in-progress-banner { background: #e6f4ea; color: #0a6b2c; border-radius: 8px; padding: 0.5rem 0.75rem; margin-bottom: 0.75rem; font-size: 0.9rem; }
+  .room-timetable .bd-select-row,
+  .room-timetable .bd-select { display: none; } /* already in a session */
 </style>
 {% endblock %}

@@ -158,6 +158,16 @@ def index(request: HttpRequest) -> HttpResponse:
     return render(request, "tasks/index.html", ctx)
 
 
+@login_required
+@require_GET
+def region(request: HttpRequest) -> HttpResponse:
+    """Bare `#full-region` partial for embedding the live timetable in
+    other pages (the body-double room loads it via hx-get). The row
+    actions inside already hx-post to their own endpoints and re-render
+    this same region, so the embed is fully interactive."""
+    return render(request, "tasks/_full_region.html", _today_context(request.user))
+
+
 # ---------------------------------------------------------------------------
 # Add / edit / delete task
 # ---------------------------------------------------------------------------

@@ -10,6 +10,7 @@ app_name = "tasks"
 
 urlpatterns = [
     path("", views.index, name="index"),
+    path("region/", views.region, name="region"),
     path("add/", views.add_task, name="add"),
     path("plan/", views.plan, name="plan"),
     path("break/", views.take_break, name="break"),
