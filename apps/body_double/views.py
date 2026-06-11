@@ -83,6 +83,7 @@ def index(request: HttpRequest) -> HttpResponse:
     # Local import — avoids loading the communities app at module-load
     # time and keeps the import graph stable.
     from apps.communities.services import user_communities
+    from apps.tasks.models import Task
 
     selected_tasks = _selected_tasks(request.user, request.GET.getlist("tasks"))
     return render(
@@ -93,6 +94,12 @@ def index(request: HttpRequest) -> HttpResponse:
             "selected_tasks": selected_tasks,
             "tasks_total_minutes": _tasks_duration(selected_tasks),
             "task_ids_csv": ",".join(str(t.pk) for t in selected_tasks),
+            # For the "From my timetable" duration mode on the form itself.
+            "selectable_tasks": list(
+                Task.objects.filter(user=request.user, status=Task.STATUS_PENDING).order_by(
+                    "scheduled_start", "created_at"
+                )
+            ),
         },
     )
 
@@ -156,10 +163,15 @@ def find(request: HttpRequest) -> HttpResponse:
     if duration not in _VALID_DURATIONS:
         duration = 30
 
-    # Timetable-task flow: when the form carries selected task ids, the
-    # session length is their cumulative remaining time — recomputed
-    # server-side from the user's own tasks, never trusted from the form.
-    task_ids = (request.POST.get("task_ids") or "").split(",")
+    # Timetable-task flow: when the form carries selected task ids —
+    # checkboxes from the on-form "From my timetable" mode, or the hidden
+    # CSV from the tasks-page hand-off — the session length is their
+    # cumulative remaining time, recomputed server-side from the user's
+    # own tasks, never trusted from the form. Explicitly choosing the
+    # pill mode wins over any stale checkbox state.
+    task_ids = request.POST.getlist("tasks") or (request.POST.get("task_ids") or "").split(",")
+    if (request.POST.get("duration_mode") or "") == "pills":
+        task_ids = []
     selected_tasks = _selected_tasks(request.user, task_ids)
     if selected_tasks:
         duration = _tasks_duration(selected_tasks)

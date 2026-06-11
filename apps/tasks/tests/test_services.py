@@ -365,12 +365,14 @@ def _break_settings(settings):
 class TestInsertBreak:
     def test_creates_busy_block_and_shifts(self, _break_settings) -> None:
         u = _user("br1")
-        now = timezone.now()
+        # Pinned to noon so the shifted task can't cross work_end and drop
+        # to the backlog when the suite runs in the evening.
+        now = timezone.localtime().replace(hour=12, minute=0, second=0, microsecond=0)
         # Schedule a pending task 5 min from now so the shift is observable.
         t = create_task(user=u, name="A", duration_minutes=30)
         future_start = now + timedelta(minutes=5)
         Task.objects.filter(pk=t.pk).update(scheduled_start=future_start)
-        block, info = insert_break(user=u, duration_minutes=15)
+        block, info = insert_break(user=u, duration_minutes=15, now=now)
         assert block.kind == BusyBlock.KIND_BREAK
         assert info["shifted"] == 1
         assert info["dropped"] == 0

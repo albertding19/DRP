@@ -31,16 +31,48 @@
         </p>
       </fieldset>
     {% else %}
-      <fieldset class="needs-row">
+      <fieldset class="needs-row" x-data="{ mode: 'pills', total: 0 }">
         <legend>How long are you here for?</legend>
         <div class="pill-group" role="radiogroup">
-          <label class="pill"><input type="radio" name="duration_minutes" value="15"> 15 min</label>
-          <label class="pill"><input type="radio" name="duration_minutes" value="30" checked> 30 min</label>
-          <label class="pill"><input type="radio" name="duration_minutes" value="45"> 45 min</label>
-          <label class="pill"><input type="radio" name="duration_minutes" value="60"> 60 min</label>
-          <label class="pill"><input type="radio" name="duration_minutes" value="90"> 90 min</label>
+          <label class="pill"><input type="radio" name="duration_mode" value="pills" x-model="mode"> ⏱ Pick a length</label>
+          <label class="pill"><input type="radio" name="duration_mode" value="tasks" x-model="mode"> 📅 From my timetable</label>
         </div>
-        <small class="row-hint">We'll match you with someone here for roughly the same time so you both leave together.</small>
+
+        <div x-show="mode === 'pills'" class="duration-block">
+          <div class="pill-group" role="radiogroup">
+            <label class="pill"><input type="radio" name="duration_minutes" value="15"> 15 min</label>
+            <label class="pill"><input type="radio" name="duration_minutes" value="30" checked> 30 min</label>
+            <label class="pill"><input type="radio" name="duration_minutes" value="45"> 45 min</label>
+            <label class="pill"><input type="radio" name="duration_minutes" value="60"> 60 min</label>
+            <label class="pill"><input type="radio" name="duration_minutes" value="90"> 90 min</label>
+          </div>
+          <small class="row-hint">We'll match you with someone here for roughly the same time so you both leave together.</small>
+        </div>
+
+        <div x-show="mode === 'tasks'" x-cloak class="duration-block task-pick">
+          {% if selectable_tasks %}
+            {% for task in selectable_tasks %}
+              <label class="task-pick-row">
+                <input
+                  type="checkbox"
+                  name="tasks"
+                  value="{{ task.id }}"
+                  data-min="{{ task.remaining_minutes }}"
+                  x-on:change="total = Array.from($el.closest('.task-pick').querySelectorAll('input:checked')).reduce((s, c) => s + parseInt(c.dataset.min, 10), 0)"
+                >
+                {{ task.name }}
+                <span class="muted">· {{ task.remaining_minutes }} min{% if task.scheduled_start %} · {{ task.scheduled_start|date:"H:i" }}{% endif %}</span>
+              </label>
+            {% endfor %}
+            <small class="row-hint">
+              Session length:
+              <strong x-text="total ? Math.min(240, Math.max(15, total)) + ' min' : '—'"></strong>
+              <span x-show="!total"> — tick the tasks you want to get done together.</span>
+            </small>
+          {% else %}
+            <small class="row-hint">Nothing pending on your timetable — <a href="{% url 'tasks:index' %}">add some tasks</a> first.</small>
+          {% endif %}
+        </div>
       </fieldset>
     {% endif %}
 
@@ -122,7 +154,18 @@
 
 {% block head_extra %}
 <style>
+  [x-cloak] { display: none !important; }
   .body-double-landing { padding-top: 0.5rem; }
+  .duration-block { margin-top: 0.75rem; }
+  .task-pick { display: grid; gap: 0.35rem; }
+  .task-pick-row {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    font-size: 0.92rem;
+    cursor: pointer;
+  }
+  .task-pick-row .muted { color: var(--ink-muted); font-size: 0.82rem; }
   .body-double-landing h1 {
     font-family: var(--font-serif);
     font-size: 2rem;

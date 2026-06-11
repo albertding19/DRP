@@ -369,3 +369,46 @@ class TestTaskDrivenFind:
         body = r.content
         assert b'id="bd-select-form"' in body
         assert b'form="bd-select-form"' in body
+
+
+@pytest.mark.django_db(transaction=True)
+class TestDurationModeChoice:
+    """The find form offers two duration modes: pill values, or ticking
+    timetable tasks for their cumulative remaining time."""
+
+    def _task(self, user, name, minutes):
+        from apps.tasks.models import Task
+
+        return Task.objects.create(user=user, name=name, duration_minutes=minutes)
+
+    def test_index_renders_both_modes(self) -> None:
+        client, user = _authed_client("dm_index")
+        self._task(user, "Pick me", 45)
+        body = client.get("/body-double/").content
+        assert b"Pick a length" in body
+        assert b"From my timetable" in body
+        assert b"Pick me" in body
+
+    def test_checkbox_mode_uses_cumulative_time(self) -> None:
+        client, user = _authed_client("dm_tasks")
+        t1 = self._task(user, "A", 40)
+        t2 = self._task(user, "B", 50)
+        client.post(
+            "/body-double/find/",
+            {"duration_mode": "tasks", "tasks": [str(t1.id), str(t2.id)]},
+        )
+        assert PoolTicket.objects.get(user=user).duration_minutes == 90
+
+    def test_pills_mode_ignores_stale_checkboxes(self) -> None:
+        client, user = _authed_client("dm_pills")
+        t1 = self._task(user, "A", 40)
+        client.post(
+            "/body-double/find/",
+            {"duration_mode": "pills", "duration_minutes": "60", "tasks": [str(t1.id)]},
+        )
+        assert PoolTicket.objects.get(user=user).duration_minutes == 60
+
+    def test_tasks_mode_with_nothing_ticked_falls_back(self) -> None:
+        client, user = _authed_client("dm_none")
+        client.post("/body-double/find/", {"duration_mode": "tasks", "duration_minutes": "45"})
+        assert PoolTicket.objects.get(user=user).duration_minutes == 45
