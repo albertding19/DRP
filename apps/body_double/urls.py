@@ -21,6 +21,7 @@ urlpatterns = [
     path("sessions/<int:session_id>/end/", views.end, name="end"),
     path("sessions/<int:session_id>/refill/", views.refill, name="refill"),
     path("sessions/<int:session_id>/hop/", views.hop, name="hop"),
+    path("sessions/<int:session_id>/requeue/", views.requeue, name="requeue"),
     path("schedule/", views.schedule, name="schedule"),
     path("schedule/book/", views.book_view, name="book"),
     path("schedule/status/", views.schedule_status, name="schedule_status"),

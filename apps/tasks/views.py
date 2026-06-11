@@ -119,9 +119,21 @@ def _render_full_region(request: HttpRequest, *, extra: dict | None = None) -> H
     """Return the timetable region + OOB swaps for backlog and busy blocks.
     Mirrors the `hx-swap-oob` pattern in `apps.comments`."""
     ctx = _today_context(request.user)
+    ctx["free_work_started_at"] = _free_work_started_at(request)
     if extra:
         ctx.update(extra)
     return render(request, "tasks/_full_region.html", ctx)
+
+
+def _free_work_started_at(request: HttpRequest) -> datetime | None:
+    """Parsed free-work start marker from the session, or None."""
+    raw = request.session.get("free_work_started_at")
+    if not raw:
+        return None
+    try:
+        return timezone.localtime(datetime.fromisoformat(raw))
+    except ValueError:
+        return None
 
 
 def _parse_optional_dt(raw: str | None) -> datetime | None:
@@ -155,7 +167,32 @@ def index(request: HttpRequest) -> HttpResponse:
     ctx = _today_context(request.user)
     ctx["add_task_initial"] = {"name": "", "duration_minutes": "30"}
     ctx["add_task_errors"] = {}
+    ctx["free_work_started_at"] = _free_work_started_at(request)
     return render(request, "tasks/index.html", ctx)
+
+
+@login_required
+@require_POST
+def work_start(request: HttpRequest) -> HttpResponse:
+    """Enter free-work mode: an open-ended, untimed focus block. The
+    plan is left alone — the only state is the start marker, kept in the
+    session so every timetable surface (tasks page, room embed) sees it."""
+    request.session["free_work_started_at"] = timezone.now().isoformat()
+    if request.htmx:
+        return _render_full_region(request)
+    return redirect("tasks:index")
+
+
+@login_required
+@require_POST
+def work_end(request: HttpRequest) -> HttpResponse:
+    """Leave free-work mode and replan: every remaining task is laid out
+    afresh starting from the moment this was clicked."""
+    request.session.pop("free_work_started_at", None)
+    auto_plan(user=request.user)  # plans from now by definition
+    if request.htmx:
+        return _render_full_region(request)
+    return redirect("tasks:index")
 
 
 @login_required
@@ -165,7 +202,9 @@ def region(request: HttpRequest) -> HttpResponse:
     other pages (the body-double room loads it via hx-get). The row
     actions inside already hx-post to their own endpoints and re-render
     this same region, so the embed is fully interactive."""
-    return render(request, "tasks/_full_region.html", _today_context(request.user))
+    ctx = _today_context(request.user)
+    ctx["free_work_started_at"] = _free_work_started_at(request)
+    return render(request, "tasks/_full_region.html", ctx)
 
 
 # ---------------------------------------------------------------------------

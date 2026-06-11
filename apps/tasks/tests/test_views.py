@@ -219,3 +219,49 @@ class TestRegionPartial:
         from django.test import Client
 
         assert Client().get("/tasks/region/").status_code == 302
+
+
+@pytest.mark.django_db
+class TestFreeWorkMode:
+    """Start work = open-ended focus block; End work = replan every
+    remaining task starting from the click."""
+
+    def test_start_shows_end_button(self, client_with_session) -> None:
+        client, _ = client_with_session
+        r = client.post("/tasks/work/start/", HTTP_HX_REQUEST="true")
+        assert r.status_code == 200
+        assert b"Working freely since" in r.content
+        assert b"End work" in r.content
+
+    def test_end_replans_remaining_tasks_from_now(self, client_with_session) -> None:
+        client, user = client_with_session
+        from django.utils import timezone
+
+        from apps.tasks.models import Task
+
+        # A stale plan from earlier in the day.
+        morning = timezone.localtime().replace(hour=9, minute=0, second=0, microsecond=0)
+        t1 = Task.objects.create(
+            user=user, name="Leftover A", duration_minutes=30, scheduled_start=morning
+        )
+        t2 = Task.objects.create(user=user, name="Leftover B", duration_minutes=30)
+        client.post("/tasks/work/start/", HTTP_HX_REQUEST="true")
+        before = timezone.now()
+        r = client.post("/tasks/work/end/", HTTP_HX_REQUEST="true")
+        assert r.status_code == 200
+        assert b"Start work" in r.content  # toggled back
+        t1.refresh_from_db()
+        t2.refresh_from_db()
+        # Both pending tasks re-laid-out from the click onwards (when the
+        # work window allows; outside it they fall to the backlog).
+        now_local = timezone.localtime(before)
+        if 9 <= now_local.hour < 21:
+            assert t1.scheduled_start is not None
+            assert t1.scheduled_start >= before - timezone.timedelta(seconds=5)
+            if t2.scheduled_start is not None:
+                assert t2.scheduled_start >= before - timezone.timedelta(seconds=5)
+
+    def test_room_embed_region_carries_the_button(self, client_with_session) -> None:
+        client, _ = client_with_session
+        r = client.get("/tasks/region/")
+        assert b"Start work" in r.content

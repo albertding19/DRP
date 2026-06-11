@@ -53,6 +53,7 @@ from .services import (
     get_active_ticket,
     hop_to_room,
     request_refill,
+    requeue_from_room,
     upcoming_bookings,
 )
 
@@ -337,6 +338,24 @@ def hop(request: HttpRequest, session_id: int) -> HttpResponse:
         # Raced away — stay put; the room page carries on refilling.
         return redirect("body_double:room", session_id=session.id)
     return redirect("body_double:room", session_id=target.id)
+
+
+@login_required
+@require_POST
+def requeue(request: HttpRequest, session_id: int) -> HttpResponse:
+    """Leave the room and rejoin the general queue with the same prefs."""
+    session = get_object_or_404(BodyDoubleSession, pk=session_id)
+    if not session.includes(request.user):
+        raise Http404("No such session.")
+    try:
+        _ticket, new_session = requeue_from_room(session=session, user=request.user)
+    except NotInSessionError:
+        raise Http404("No such session.") from None
+    except AlreadyInPoolError:
+        return redirect("body_double:index")
+    if new_session is not None:
+        return redirect("body_double:room", session_id=new_session.id)
+    return redirect("body_double:waiting")
 
 
 # ---------------------------------------------------------------------------

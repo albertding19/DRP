@@ -97,6 +97,20 @@
     <button type="submit" class="btn btn-secondary">Join another room →</button>
     <small class="muted">Someone else is also waiting for a body double.</small>
   </form>
+
+  {% comment %}Always offered while alone: leave this room and wait in
+     the general queue instead (same preferences carried over).{% endcomment %}
+  <form
+    id="requeue-form"
+    method="post"
+    action="{% url 'body_double:requeue' session_id=session.id %}"
+    class="hop-offer"
+    hidden
+  >
+    {% csrf_token %}
+    <button type="submit" class="btn btn-secondary">Rejoin the queue →</button>
+    <small class="muted">Leave this room and wait in the general pool instead.</small>
+  </form>
 </section>
 
 <script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
@@ -319,6 +333,7 @@
     (room.remoteParticipants || room.participants || new Map()).size;
 
   const hopForm = document.getElementById("hop-form");
+  const requeueForm = document.getElementById("requeue-form");
 
   /* While alone, quietly check every 10s whether another survivor's room
      is open; the button appears/disappears with no other fanfare. */
@@ -340,6 +355,7 @@
   const stopHopPolling = () => {
     if (hopPoll) { clearInterval(hopPoll); hopPoll = null; }
     hopForm.hidden = true;
+    requeueForm.hidden = true;
   };
 
   const cancelRefillTimer = () => {
@@ -349,6 +365,7 @@
   const scheduleRefill = () => {
     if (remoteCount() > 0) return;
     setStatus("Your body double left — finding you a new one…");
+    requeueForm.hidden = false; /* always available while alone */
     startHopPolling();
     cancelRefillTimer();
     refillTimer = setTimeout(async () => {

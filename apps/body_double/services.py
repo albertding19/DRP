@@ -373,6 +373,27 @@ def hop_to_room(*, session: BodyDoubleSession, user) -> BodyDoubleSession | None
 
 
 @transaction.atomic
+def requeue_from_room(  # type: ignore[no-untyped-def]
+    *, session: BodyDoubleSession, user
+) -> tuple[PoolTicket, BodyDoubleSession | None]:
+    """Leave `session` and rejoin the general pool with the same
+    preferences — the always-available alternative to waiting alone for
+    a refill (the hop button only exists when another half-empty room
+    does). May match instantly, including into another survivor's room."""
+    if not session.includes(user):
+        raise NotInSessionError("Only the session participants can requeue.")
+    mine = get_active_ticket(user=user)
+    end_session(session=session, user=user)
+    return enqueue(
+        user=user,
+        community=mine.community if mine else None,
+        duration_minutes=mine.duration_minutes if mine else 30,
+        chattiness=mine.chattiness if mine else PoolTicket.CHATTINESS_FLEXIBLE,
+        work_mode=mine.work_mode if mine else PoolTicket.WORK_MODE_ANY,
+    )
+
+
+@transaction.atomic
 def request_refill(  # type: ignore[no-untyped-def]
     *, session: BodyDoubleSession, user
 ) -> tuple[PoolTicket | None, bool]:

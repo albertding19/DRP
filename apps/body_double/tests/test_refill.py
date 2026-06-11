@@ -287,3 +287,48 @@ class TestHop:
         s.save()
         r = client.get(f"/body-double/sessions/{session_b.id}/hop/")
         assert r.json() == {"available": False}
+
+
+@pytest.mark.django_db(transaction=True)
+class TestRequeue:
+    def test_requeue_leaves_room_and_rejoins_pool_with_prefs(self) -> None:
+        from apps.body_double.services import requeue_from_room
+
+        alice, bob = _user("rq_a"), _user("rq_b")
+        enqueue(user=alice, chattiness=PoolTicket.CHATTINESS_QUIET, duration_minutes=60)
+        _, session = enqueue(user=bob, chattiness=PoolTicket.CHATTINESS_QUIET, duration_minutes=60)
+        end_session(session=session, user=bob)
+
+        ticket, new_session = requeue_from_room(session=session, user=alice)
+        assert new_session is None  # pool empty
+        assert ticket.status == PoolTicket.STATUS_WAITING
+        assert ticket.session_id is None  # general queue, not a refill
+        assert ticket.chattiness == PoolTicket.CHATTINESS_QUIET
+        assert ticket.duration_minutes == 60
+        session.refresh_from_db()
+        assert session.status == BodyDoubleSession.STATUS_ENDED
+
+    def test_requeue_view_redirects_to_waiting(self) -> None:
+        from django.test import Client
+
+        alice, bob = _user("rqv_a"), _user("rqv_b")
+        enqueue(user=alice)
+        _, session = enqueue(user=bob)
+        end_session(session=session, user=bob)
+        client = Client()
+        s = client.session
+        s["user_id"] = alice.id
+        s.save()
+        r = client.post(f"/body-double/sessions/{session.id}/requeue/")
+        assert r.status_code == 302
+        assert r.url == "/body-double/waiting/"
+
+    def test_requeue_can_match_into_another_survivors_room(self) -> None:
+        from apps.body_double.services import requeue_from_room
+
+        alice, session_a, carol, session_b = _two_lonely_rooms("rq2")
+        # Carol requeues: the general matcher finds alice's refill ticket
+        # and routes carol into alice's room.
+        _ticket, new_session = requeue_from_room(session=session_b, user=carol)
+        assert new_session is not None
+        assert new_session.pk == session_a.pk

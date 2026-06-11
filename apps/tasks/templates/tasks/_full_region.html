@@ -16,6 +16,31 @@ stable.
   </div>
 {% endif %}
 
+{% comment %}Free-work mode: an open-ended, untimed focus block. End work
+   replans every remaining task starting from the click.{% endcomment %}
+{% if free_work_started_at %}
+  <div class="in-progress-banner">
+    ⏱ Working freely since <strong>{{ free_work_started_at|date:"H:i" }}</strong>
+    <form
+      method="post"
+      action="{% url 'tasks:work_end' %}"
+      hx-post="{% url 'tasks:work_end' %}"
+      hx-target="#full-region"
+      hx-swap="innerHTML"
+      style="display:inline; margin-left:0.6rem;"
+    >{% csrf_token %}<button type="submit" class="btn btn-secondary">⏹ End work — replan my day from now</button></form>
+  </div>
+{% else %}
+  <form
+    method="post"
+    action="{% url 'tasks:work_start' %}"
+    hx-post="{% url 'tasks:work_start' %}"
+    hx-target="#full-region"
+    hx-swap="innerHTML"
+    style="margin: 0 0 0.75rem;"
+  >{% csrf_token %}<button type="submit" class="btn btn-secondary">▶ Start work — no timer, replan when done</button></form>
+{% endif %}
+
 <div class="section-card">
   <div class="section-card-header">
     <h2>📅 Today, {{ today|date:"D j M" }}</h2>
