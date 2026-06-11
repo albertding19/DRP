@@ -60,10 +60,12 @@ services:
         value: config.settings.prod
       - key: SECRET_KEY
         generateValue: true
-      # ALLOWED_HOSTS — wildcard-match all Render subdomains. Render also
-      # injects RENDER_EXTERNAL_HOSTNAME, which prod.py reads and appends.
+      # ALLOWED_HOSTS — custom domain + Render subdomains (Render also
+      # injects RENDER_EXTERNAL_HOSTNAME, which prod.py reads and appends).
+      # Define ONCE: a duplicated envVar key fails blueprint validation,
+      # which silently blocks all deploys behind the failed sync.
       - key: ALLOWED_HOSTS
-        value: .onrender.com,localhost
+        value: "drp.it.com,www.drp.it.com,.onrender.com,localhost"
       - key: DATABASE_URL
         fromDatabase:
           name: drp-postgres
@@ -100,16 +102,15 @@ services:
         sync: false
       - key: DEFAULT_FROM_EMAIL
         value: "unmasked <auth@drp.it.com>"
-      # Custom domain (added in the Render dashboard under Custom Domains).
-      # CANONICAL_HOST makes the app 301 every other hostname there, so
-      # magic-link emails always link to the domain we send from — Gmail
-      # scores sender/link mismatch as phishing. NOTE: blueprint env-var
-      # sync has not been applying reliably; if a deploy doesn't pick
-      # these up, set them in the dashboard Environment tab by hand.
-      - key: ALLOWED_HOSTS
-        value: "drp.it.com,www.drp.it.com"
+      # CANONICAL_HOST makes the app 301 every other hostname to the
+      # custom domain, so magic-link emails always link to the domain we
+      # send from — Gmail scores sender/link mismatch as phishing.
+      # DANGER: only flip this to "drp.it.com" AFTER the custom domain is
+      # added on Render (Settings → Custom Domains) and shows
+      # "Certificate issued" — set earlier, it redirects all traffic to a
+      # dead host. Empty = redirect disabled.
       - key: CANONICAL_HOST
-        value: "drp.it.com"
+        value: ""
       # Google OAuth credentials — Cloud Console → APIs & Services →
       # Credentials → OAuth 2.0 Client ID (Web application). The redirect
       # URI must match exactly what's registered in the console.
