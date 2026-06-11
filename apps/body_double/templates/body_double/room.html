@@ -148,6 +148,29 @@
     selfViewEl.classList.remove("active");
   };
 
+  /* Self-healing self-view. When a new participant joins an already-
+     running room (partner refill / hop), the renegotiation can
+     unpublish + republish the local video without a clean
+     LocalTrackPublished afterwards — the PiP silently vanishes. This
+     re-attaches the local camera track whenever the camera is enabled
+     but no <video> is mounted. Idempotent + cheap, so it's safe to call
+     from joins, subscriptions, and a slow safety-net interval. */
+  const ensureSelfView = () => {
+    try {
+      const lp = room.localParticipant;
+      if (!lp || !lp.isCameraEnabled) return;
+      if (selfViewEl.querySelector("video")) return;
+      const pubs = lp.videoTrackPublications || lp.videoTracks;
+      if (!pubs) return;
+      for (const pub of pubs.values()) {
+        if (pub.track) {
+          attachLocalVideo(pub.track);
+          return;
+        }
+      }
+    } catch (e) { /* purely cosmetic — never break the call over it */ }
+  };
+
   /* ----------------------------- chat panel ----------------------------- */
 
   const formatTime = (ts) => {
@@ -208,6 +231,7 @@
   room
     .on(LivekitClient.RoomEvent.TrackSubscribed, (track, _pub, participant) => {
       attachRemoteTrack(track, participant.identity);
+      ensureSelfView();
     })
     .on(LivekitClient.RoomEvent.TrackUnsubscribed, (track) => track.detach())
     .on(LivekitClient.RoomEvent.LocalTrackPublished, (publication) => {
@@ -243,6 +267,7 @@
     .on(LivekitClient.RoomEvent.ParticipantConnected, (participant) => {
       cancelRefillTimer();
       stopHopPolling();
+      ensureSelfView();
       appendSystem(participant.identity + " joined.");
       setStatus("Connected.");
       /* A refill partner may differ from the server-rendered name. */
@@ -338,6 +363,8 @@
     await room.connect(wsUrl, token);
     setStatus("Connected.");
     await room.localParticipant.enableCameraAndMicrophone();
+    /* Safety net for any republish path the events above miss. */
+    setInterval(ensureSelfView, 5000);
   } catch (err) {
     console.error("LiveKit connect failed:", err);
     setStatus("Couldn't connect. " + (err.message || ""));
