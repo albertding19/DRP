@@ -68,20 +68,28 @@ def _busy_intervals(
     window_end: datetime,
     *,
     now: datetime | None = None,
+    include_tasks: bool = True,
 ) -> list[BusyInterval]:
     """Every interval in [window_start, window_end) the user's timetable
-    marks as occupied: busy blocks, scheduled pending tasks (for their
-    remaining duration), the in-progress task from `now`, and active
-    body-double bookings.
+    marks as occupied: busy blocks, active body-double bookings, and —
+    when `include_tasks` — scheduled pending tasks (for their remaining
+    duration) plus the in-progress task from `now`.
+
+    `include_tasks=False` is the MATCHING view of the timetable: tasks
+    are exactly what you'd do *during* a body-double session, so for
+    "does this user have time to co-work?" only hard commitments
+    (lectures/meetings = BusyBlocks, existing body-double bookings)
+    count as busy.
 
     Intervals may poke out past the window — `free_slots` clips them.
     """
     from apps.tasks.models import BusyBlock, Task  # lazy: see module docstring
 
     busy: list[BusyInterval] = booking_intervals(user, window_start, window_end)
-
     blocks = BusyBlock.objects.filter(user=user, start_at__lt=window_end, end_at__gt=window_start)
     busy.extend(BusyInterval(start=b.start_at, end=b.end_at) for b in blocks)
+    if not include_tasks:
+        return busy
 
     scheduled = Task.objects.filter(
         user=user,
@@ -116,14 +124,18 @@ def availability_for(user, *, window_start: datetime, window_end: datetime) -> l
 def free_minutes_from(user, *, now: datetime | None = None) -> int:  # type: ignore[no-untyped-def]
     """Minutes from `now` until the user's next timetabled commitment.
 
+    Scheduled tasks do NOT count as commitments here — body doubling is
+    FOR doing tasks, so only busy blocks (lectures, meetings) and
+    existing body-double bookings can make a user "unavailable" to match.
+
     Returns:
       UNCONSTRAINED_MINUTES — `now` is outside the planning work window
         (the timetable only describes TASKS_WORK_START/END_HOUR), or the
-        user has nothing scheduled ahead of `now` today. The work-window
+        user has no hard commitment ahead of `now` today. The work-window
         end is a planning boundary, not a commitment — a user with an
         empty timetable at 20:50 is still fully free.
-      0 — the timetable says the user is busy right now.
-      N — free for N minutes, then a commitment starts.
+      0 — a hard commitment is on right now.
+      N — free for N minutes, then a hard commitment starts.
     """
     now_local = timezone.localtime(now) if now is not None else timezone.localtime()
     work_start = now_local.replace(
@@ -138,7 +150,7 @@ def free_minutes_from(user, *, now: datetime | None = None) -> int:  # type: ign
     upcoming = sorted(
         (
             iv
-            for iv in _busy_intervals(user, now_local, work_end, now=now_local)
+            for iv in _busy_intervals(user, now_local, work_end, now=now_local, include_tasks=False)
             if iv.end > now_local
         ),
         key=lambda iv: iv.start,

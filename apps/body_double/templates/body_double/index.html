@@ -15,17 +15,34 @@
   <form method="post" action="{% url 'body_double:find' %}" class="needs-form">
     {% csrf_token %}
 
-    <fieldset class="needs-row">
-      <legend>How long are you here for?</legend>
-      <div class="pill-group" role="radiogroup">
-        <label class="pill"><input type="radio" name="duration_minutes" value="15"> 15 min</label>
-        <label class="pill"><input type="radio" name="duration_minutes" value="30" checked> 30 min</label>
-        <label class="pill"><input type="radio" name="duration_minutes" value="45"> 45 min</label>
-        <label class="pill"><input type="radio" name="duration_minutes" value="60"> 60 min</label>
-        <label class="pill"><input type="radio" name="duration_minutes" value="90"> 90 min</label>
-      </div>
-      <small class="row-hint">We'll match you with someone here for roughly the same time so you both leave together.</small>
-    </fieldset>
+    {% if selected_tasks %}
+      <input type="hidden" name="task_ids" value="{{ task_ids_csv }}">
+      <fieldset class="needs-row">
+        <legend>Your session plan</legend>
+        <ul class="bd-task-list">
+          {% for task in selected_tasks %}
+            <li>{{ task.name }} <span class="muted">· {{ task.remaining_minutes }} min</span></li>
+          {% endfor %}
+        </ul>
+        <p class="bd-task-total">
+          Session length: <strong>{{ tasks_total_minutes }} min</strong> — the combined
+          time of your selected tasks. We'll match you with someone here for
+          roughly the same stretch.
+        </p>
+      </fieldset>
+    {% else %}
+      <fieldset class="needs-row">
+        <legend>How long are you here for?</legend>
+        <div class="pill-group" role="radiogroup">
+          <label class="pill"><input type="radio" name="duration_minutes" value="15"> 15 min</label>
+          <label class="pill"><input type="radio" name="duration_minutes" value="30" checked> 30 min</label>
+          <label class="pill"><input type="radio" name="duration_minutes" value="45"> 45 min</label>
+          <label class="pill"><input type="radio" name="duration_minutes" value="60"> 60 min</label>
+          <label class="pill"><input type="radio" name="duration_minutes" value="90"> 90 min</label>
+        </div>
+        <small class="row-hint">We'll match you with someone here for roughly the same time so you both leave together.</small>
+      </fieldset>
+    {% endif %}
 
     <fieldset class="needs-row">
       <legend>How chatty?</legend>
@@ -128,6 +145,10 @@
     font-weight: 400;
     color: var(--ink-muted);
   }
+  .bd-task-list { list-style: none; margin: 0 0 0.5rem; padding: 0; display: grid; gap: 0.25rem; }
+  .bd-task-list .muted { color: var(--ink-muted); }
+  .bd-task-total { margin: 0; color: var(--ink-muted); font-size: 0.9rem; line-height: 1.4; }
+  .bd-task-total strong { color: var(--ink); }
 
   .pill-group {
     display: flex;

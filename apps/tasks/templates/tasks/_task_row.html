@@ -1,5 +1,19 @@
 {% comment %}One scheduled task on the timetable.{% endcomment %}
 <div class="task-row" id="task-{{ task.id }}">
+  {% if task.status == "pending" %}
+    {% comment %}Belongs to the #bd-select-form in _full_region.html via
+       the HTML5 form attribute — task rows contain their own action
+       forms, so the checkbox can't live inside an ancestor form.{% endcomment %}
+    <input
+      type="checkbox"
+      name="tasks"
+      value="{{ task.id }}"
+      form="bd-select-form"
+      class="bd-select"
+      title="Include in a body-double session"
+      aria-label="Include {{ task.name }} in a body-double session"
+    >
+  {% endif %}
   <span class="time">
     {% if task.scheduled_start %}{{ task.scheduled_start|date:"H:i" }}{% else %}—{% endif %}
   </span>

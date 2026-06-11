@@ -133,7 +133,21 @@ class TestFreeMinutesFrom:
         early = _noon().replace(hour=settings.TASKS_WORK_START_HOUR - 1)
         assert free_minutes_from(u, now=early) == UNCONSTRAINED_MINUTES
 
-    def test_in_progress_task_is_busy_now(self) -> None:
+    def test_scheduled_task_does_not_block_matching(self) -> None:
+        # Tasks are what you'd DO in a body-double session — only hard
+        # commitments (busy blocks, bookings) make a user unavailable.
+        u = _user("fm_task")
+        _task(u, minutes_from_noon=-10, duration=60)  # task running over noon
+        _task(u, minutes_from_noon=60)  # and another later
+        assert free_minutes_from(u, now=_noon()) == UNCONSTRAINED_MINUTES
+
+    def test_in_progress_task_does_not_block_matching(self) -> None:
         u = _user("fm_prog")
         Task.objects.create(user=u, name="t", duration_minutes=30, status=Task.STATUS_IN_PROGRESS)
-        assert free_minutes_from(u, now=_noon()) == 0
+        assert free_minutes_from(u, now=_noon()) == UNCONSTRAINED_MINUTES
+
+    def test_busy_block_still_blocks_despite_tasks_being_free(self) -> None:
+        u = _user("fm_mixed")
+        _task(u, minutes_from_noon=0)  # ignored
+        _block(u, minutes_from_noon=40)  # lecture — hard commitment
+        assert free_minutes_from(u, now=_noon()) == 40

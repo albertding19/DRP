@@ -81,11 +81,44 @@ def index(request: HttpRequest) -> HttpResponse:
     # time and keeps the import graph stable.
     from apps.communities.services import user_communities
 
+    selected_tasks = _selected_tasks(request.user, request.GET.getlist("tasks"))
     return render(
         request,
         "body_double/index.html",
-        {"user_communities": user_communities(request.user)},
+        {
+            "user_communities": user_communities(request.user),
+            "selected_tasks": selected_tasks,
+            "tasks_total_minutes": _tasks_duration(selected_tasks),
+            "task_ids_csv": ",".join(str(t.pk) for t in selected_tasks),
+        },
     )
+
+
+# Cumulative task durations are clamped to the pool's plausible range:
+# at least the smallest duration choice, at most 4 hours. The matcher
+# handles arbitrary values (duration is a soft, phased preference).
+_TASKS_DURATION_MIN = 15
+_TASKS_DURATION_MAX = 240
+
+
+def _selected_tasks(user, raw_ids) -> list:  # type: ignore[no-untyped-def]
+    """Resolve task ids from the timetable's checkbox form to the user's
+    OWN pending tasks — foreign or bogus ids silently drop out."""
+    ids = [int(raw) for raw in raw_ids if str(raw).isdigit()]
+    if not ids:
+        return []
+    from apps.tasks.models import Task  # lazy: keeps the import graph stable
+
+    return list(Task.objects.filter(user=user, pk__in=ids, status=Task.STATUS_PENDING))
+
+
+def _tasks_duration(tasks) -> int:  # type: ignore[no-untyped-def]
+    """Session length for a set of tasks: cumulative remaining minutes,
+    clamped to [15, 240]."""
+    if not tasks:
+        return 0
+    total = sum(t.remaining_minutes for t in tasks)
+    return max(_TASKS_DURATION_MIN, min(_TASKS_DURATION_MAX, total))
 
 
 _VALID_DURATIONS = {15, 30, 45, 60, 90}
@@ -119,6 +152,14 @@ def find(request: HttpRequest) -> HttpResponse:
         duration = 30
     if duration not in _VALID_DURATIONS:
         duration = 30
+
+    # Timetable-task flow: when the form carries selected task ids, the
+    # session length is their cumulative remaining time — recomputed
+    # server-side from the user's own tasks, never trusted from the form.
+    task_ids = (request.POST.get("task_ids") or "").split(",")
+    selected_tasks = _selected_tasks(request.user, task_ids)
+    if selected_tasks:
+        duration = _tasks_duration(selected_tasks)
 
     chattiness = (request.POST.get("chattiness") or "").strip()
     if chattiness not in _VALID_CHATTINESS:

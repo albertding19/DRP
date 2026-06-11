@@ -25,6 +25,12 @@ stable.
       {% for task in scheduled %}
         {% include "tasks/_task_row.html" with task=task %}
       {% endfor %}
+      <form id="bd-select-form" method="get" action="{% url 'body_double:index' %}" class="bd-select-row">
+        <button type="submit" class="btn btn-secondary">
+          🤝 Body double the ticked tasks
+        </button>
+        <small class="muted">We'll match you with someone for their combined time.</small>
+      </form>
     {% else %}
       <p class="empty-line">Add something below — it'll slot itself in here.</p>
     {% endif %}

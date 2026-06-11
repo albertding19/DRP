@@ -306,3 +306,66 @@ class TestEndView:
         assert response.status_code == 404
         session.refresh_from_db()
         assert session.status == BodyDoubleSession.STATUS_ACTIVE
+
+
+@pytest.mark.django_db(transaction=True)
+class TestTaskDrivenFind:
+    """Selecting timetable tasks drives the session: the index page shows
+    the plan + combined time, and find() uses the cumulative remaining
+    minutes (recomputed server-side) as the ticket duration."""
+
+    def _task(self, user, name, minutes, **kwargs):
+        from apps.tasks.models import Task
+
+        return Task.objects.create(user=user, name=name, duration_minutes=minutes, **kwargs)
+
+    def test_index_shows_selected_tasks_and_total(self) -> None:
+        client, user = _authed_client("tdf_index")
+        t1 = self._task(user, "Read paper", 40)
+        t2 = self._task(user, "Write summary", 35)
+        r = client.get(f"/body-double/?tasks={t1.id}&tasks={t2.id}")
+        body = r.content
+        assert b"Read paper" in body
+        assert b"Write summary" in body
+        assert b"75 min" in body
+        # Duration pills replaced by the task-derived plan.
+        assert b'name="duration_minutes"' not in body
+        assert f'name="task_ids" value="{t1.id},{t2.id}"'.encode() in body
+
+    def test_find_uses_cumulative_remaining_minutes(self) -> None:
+        client, user = _authed_client("tdf_find")
+        t1 = self._task(user, "A", 40)
+        t2 = self._task(user, "B", 60, time_spent_minutes=10)  # 50 remaining
+        r = client.post("/body-double/find/", {"task_ids": f"{t1.id},{t2.id}"})
+        assert r.status_code == 302
+        ticket = PoolTicket.objects.get(user=user)
+        assert ticket.duration_minutes == 90
+
+    def test_foreign_and_bogus_task_ids_ignored(self) -> None:
+        client, user = _authed_client("tdf_foreign")
+        other = User.objects.create_anonymous(nickname="tdf_victim")
+        theirs = self._task(other, "Not yours", 60)
+        client.post(
+            "/body-double/find/",
+            {"task_ids": f"{theirs.id},abc,999999", "duration_minutes": "45"},
+        )
+        ticket = PoolTicket.objects.get(user=user)
+        # Falls back to the pill value — no foreign-task inflation.
+        assert ticket.duration_minutes == 45
+
+    def test_total_clamped_to_four_hours(self) -> None:
+        client, user = _authed_client("tdf_clamp")
+        t1 = self._task(user, "Huge", 600)
+        client.post("/body-double/find/", {"task_ids": str(t1.id)})
+        ticket = PoolTicket.objects.get(user=user)
+        assert ticket.duration_minutes == 240
+
+    def test_tasks_page_has_select_form(self) -> None:
+        client, user = _authed_client("tdf_page")
+        from django.utils import timezone
+
+        self._task(user, "On the plan", 30, scheduled_start=timezone.now())
+        r = client.get("/tasks/")
+        body = r.content
+        assert b'id="bd-select-form"' in body
+        assert b'form="bd-select-form"' in body
