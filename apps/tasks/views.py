@@ -100,9 +100,17 @@ def _today_context(user) -> dict:
         ]
     except Exception:
         body_double_bookings = []
+    # Merged chronological view for the Today tab: scheduled tasks + today's
+    # blocked times (manual busy blocks + breaks), ordered by start. The
+    # in-progress task may have no scheduled_start, so it falls back to `now`.
+    timeline = [("task", t, t.scheduled_start or now) for t in scheduled]
+    timeline += [("busy", b, b.start_at) for b in busy]
+    timeline.sort(key=lambda entry: entry[2])
+    today_timeline = [(kind, obj) for kind, obj, _ in timeline]
     return {
         "today": day_start,
         "scheduled": scheduled,
+        "today_timeline": today_timeline,
         "backlog": backlog,
         "completed": completed,
         "busy_blocks": busy,

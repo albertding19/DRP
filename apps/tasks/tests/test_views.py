@@ -180,6 +180,23 @@ class TestBusyEndpoint:
         assert r.status_code == 200
         assert BusyBlock.objects.filter(user=user, name="Lecture").exists()
 
+    def test_add_busy_reschedules_reflow_only(self, monkeypatch) -> None:
+        # Adding a blocked time auto-reschedules, but only reflows already-
+        # scheduled tasks (it never pulls the backlog onto today).
+        from unittest.mock import MagicMock
+
+        from apps.tasks import views as tasks_views
+
+        client, user = _authed("bu3")
+        fake_plan = MagicMock(return_value={"placed": 0, "leftover": 0})
+        monkeypatch.setattr(tasks_views, "auto_plan", fake_plan)
+        client.post(
+            "/tasks/busy/add/",
+            {"name": "Gym", "start_at": "16:00", "end_at": "17:00"},
+            HTTP_HX_REQUEST="true",
+        )
+        fake_plan.assert_called_once_with(user=user, include_backlog=False)
+
     def test_delete_busy(self) -> None:
         client, user = _authed("bu2")
         now = timezone.localtime()

@@ -231,6 +231,23 @@ class TestAutoPlan:
         backlog.refresh_from_db()
         assert backlog.scheduled_start is not None
 
+    def test_avoids_busy_block_window(self, _planner_settings) -> None:
+        # Tasks cannot be scheduled during a blocked time. Busy 10:00–11:00;
+        # a 30-min task must start at or after 11:00.
+        u = _user("ap_busy")
+        now = self._fixed_now()
+        BusyBlock.objects.create(
+            user=u,
+            name="Lecture",
+            start_at=now,
+            end_at=now + timedelta(hours=1),
+            kind=BusyBlock.KIND_MANUAL,
+        )
+        t = create_task(user=u, name="after lecture", duration_minutes=30)
+        auto_plan(user=u, now=now)
+        t.refresh_from_db()
+        assert t.scheduled_start >= now + timedelta(hours=1)
+
     def test_after_work_end_is_noop(self, _planner_settings) -> None:
         u = _user("ap3")
         create_task(user=u, name="A", duration_minutes=30)
