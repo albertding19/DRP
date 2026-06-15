@@ -37,6 +37,27 @@ document.addEventListener("htmx:beforeSwap", (event) => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// Live "X min to go" countdown for the in-progress task banner.
+//
+// The banner's <span data-countdown-to="<epoch ms>"> carries the moment the
+// task is due to finish. ONE global timer re-renders the label every second
+// and survives HTMX swaps of #full-region — it just reads whatever banner is
+// in the DOM, so there are no per-element intervals to leak. With JS off the
+// server-rendered fallback text stands.
+// ---------------------------------------------------------------------------
+function renderCountdowns() {
+  for (const el of document.querySelectorAll("[data-countdown-to]")) {
+    const endsAt = Number(el.dataset.countdownTo);
+    if (!endsAt) continue;
+    const mins = Math.max(0, Math.ceil((endsAt - Date.now()) / 60000));
+    el.textContent = mins > 0 ? `${mins} min to go` : "time's up";
+  }
+}
+setInterval(renderCountdowns, 1000);
+document.addEventListener("DOMContentLoaded", renderCountdowns);
+document.addEventListener("htmx:afterSwap", renderCountdowns);
+
 document.addEventListener("alpine:init", () => {
   Alpine.store("ws", {
     /** path → { socket, backoff, closedByUser } */

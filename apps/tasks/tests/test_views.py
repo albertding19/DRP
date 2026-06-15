@@ -324,3 +324,53 @@ class TestContinuedLabel:
         assert r.status_code == 200
         assert b"Fresh" in r.content
         assert b"(continued)" not in r.content
+
+    def test_break_while_in_progress_marks_task_continued(self) -> None:
+        # End-to-end: you're 15 min into a 30-min task and take a break — the
+        # remaining slice is labelled "(continued)" (whether it lands back on
+        # the timetable after the break or, near midnight, in the backlog).
+        client, user = _authed("cont_break")
+        t = create_task(user=user, name="Read stats", duration_minutes=30)
+        Task.objects.filter(pk=t.pk).update(
+            status=Task.STATUS_IN_PROGRESS,
+            actual_start_at=timezone.now() - timedelta(minutes=15),
+        )
+        r = client.post("/tasks/break/", HTTP_HX_REQUEST="true")
+        assert r.status_code == 200
+        t.refresh_from_db()
+        assert t.status == Task.STATUS_PENDING
+        assert t.time_spent_minutes >= 14  # ~15 min already done
+        assert t.is_continued is True
+        assert b"(continued)" in r.content
+
+
+@pytest.mark.django_db
+class TestInProgressCountdown:
+    """The "▶ Right now: … (X min to go)" banner counts down live."""
+
+    def test_live_remaining_accounts_for_elapsed(self) -> None:
+        _, user = _authed("cd_prop")
+        t = create_task(user=user, name="Read MVC", duration_minutes=30)
+        # Started 21 min ago → ~9 min left on a 30-min task.
+        Task.objects.filter(pk=t.pk).update(
+            status=Task.STATUS_IN_PROGRESS,
+            actual_start_at=timezone.now() - timedelta(minutes=21),
+        )
+        t.refresh_from_db()
+        assert t.in_progress_ends_at is not None
+        assert 8 <= t.live_remaining_minutes <= 9
+
+    def test_banner_carries_countdown_target(self) -> None:
+        client, user = _authed("cd_view")
+        t = create_task(user=user, name="Read MVC", duration_minutes=30)
+        Task.objects.filter(pk=t.pk).update(
+            status=Task.STATUS_IN_PROGRESS,
+            actual_start_at=timezone.now() - timedelta(minutes=21),
+        )
+        r = client.get("/tasks/")
+        assert r.status_code == 200
+        assert b"Right now" in r.content
+        assert b"Read MVC" in r.content
+        # The finish time is handed to the client ticker as epoch milliseconds.
+        assert b"data-countdown-to=" in r.content
+        assert b"min to go" in r.content

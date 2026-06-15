@@ -19,10 +19,14 @@ user — Start clicks are serialised by the DB.
 
 from __future__ import annotations
 
+import math
+from datetime import timedelta
+
 from django.conf import settings
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from django.db.models import CheckConstraint, F, Index, Q, UniqueConstraint
+from django.utils import timezone
 
 from apps.core.models import TimeStampedModel
 
@@ -130,6 +134,25 @@ class Task(TimeStampedModel):
         and is waiting to be resumed (partially done, back in the pending
         queue). The timetable labels this row "(continued)"."""
         return self.status == self.STATUS_PENDING and self.time_spent_minutes > 0
+
+    @property
+    def in_progress_ends_at(self):
+        """When the current in-progress interval is due to finish:
+        `actual_start_at` + the minutes that were left when it started. None
+        unless the task is actively running."""
+        if self.actual_start_at is None:
+            return None
+        return self.actual_start_at + timedelta(minutes=self.remaining_minutes)
+
+    @property
+    def live_remaining_minutes(self) -> int:
+        """Minutes to go *right now* — `remaining_minutes` less the time
+        already elapsed in the current in-progress interval. Mirrors the
+        client-side countdown (`realtime.js`) so the first paint matches it."""
+        end = self.in_progress_ends_at
+        if end is None:
+            return self.remaining_minutes
+        return max(0, math.ceil((end - timezone.now()).total_seconds() / 60))
 
 
 class BusyBlock(TimeStampedModel):

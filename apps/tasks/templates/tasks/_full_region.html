@@ -19,7 +19,10 @@ on every tab (and in the room).
 {% if in_progress_task %}
   <div class="in-progress-banner">
     ▶ Right now: <strong>{{ in_progress_task.name }}</strong>
-    <small>({{ in_progress_task.remaining_minutes }} min to go)</small>
+    {% comment %}Live "X min to go": the span carries the finish time (epoch ms)
+       and realtime.js ticks it down each second. The server value is the
+       no-JS fallback.{% endcomment %}
+    <small>(<span{% if in_progress_task.in_progress_ends_at %} data-countdown-to="{{ in_progress_task.in_progress_ends_at|date:'U' }}000"{% endif %}>{{ in_progress_task.live_remaining_minutes }} min to go</span>)</small>
   </div>
 {% endif %}
 
