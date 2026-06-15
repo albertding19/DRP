@@ -443,6 +443,7 @@ button:hover { background: var(--terracotta-soft); border-color: var(--terracott
   font-size: 0.8rem;
   margin-left: var(--space-1);
 }
+.continued-label { color: var(--ink-muted); font-style: italic; font-weight: 500; margin-left: 0.15rem; }
 .task-row .actions, .busy-row .actions, .backlog-row .actions { display: flex; gap: var(--space-1); }
 .task-row .actions .btn, .busy-row .actions .btn, .backlog-row .actions .btn {
   padding: 0.25rem 0.6rem;

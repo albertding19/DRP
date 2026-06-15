@@ -285,3 +285,44 @@ class TestFreeWorkMode:
         client, _ = client_with_session
         r = client.get("/tasks/region/")
         assert b"Start work" in r.content
+
+
+@pytest.mark.django_db
+class TestContinuedLabel:
+    """The remaining slice of a break-interrupted task is marked "(continued)"
+    on the timetable."""
+
+    def test_is_continued_property(self) -> None:
+        _, user = _authed("cont_prop")
+        t = create_task(user=user, name="Essay", duration_minutes=30)
+        # Fresh pending task — not continued.
+        assert t.is_continued is False
+        # Partially done but still pending (paused by a break) — continued.
+        t.time_spent_minutes = 15
+        assert t.is_continued is True
+        # Once it's being worked on again it's "doing now", not continued.
+        t.status = Task.STATUS_IN_PROGRESS
+        assert t.is_continued is False
+
+    def test_continued_task_labelled_on_timetable(self) -> None:
+        client, user = _authed("cont_row")
+        t = create_task(user=user, name="Essay", duration_minutes=30)
+        # 15 min already done, rescheduled onto today after a break.
+        Task.objects.filter(pk=t.pk).update(
+            time_spent_minutes=15, scheduled_start=timezone.now()
+        )
+        r = client.get("/tasks/")
+        assert r.status_code == 200
+        assert b"Essay" in r.content
+        assert b"(continued)" in r.content
+        # Only the remaining 15 minutes are left to do.
+        assert b"15 min" in r.content
+
+    def test_fresh_scheduled_task_has_no_continued_label(self) -> None:
+        client, user = _authed("cont_fresh")
+        t = create_task(user=user, name="Fresh", duration_minutes=30)
+        Task.objects.filter(pk=t.pk).update(scheduled_start=timezone.now())
+        r = client.get("/tasks/")
+        assert r.status_code == 200
+        assert b"Fresh" in r.content
+        assert b"(continued)" not in r.content

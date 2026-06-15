@@ -18,7 +18,7 @@
     {% if task.scheduled_start %}{{ task.scheduled_start|date:"H:i" }}{% else %}—{% endif %}
   </span>
   <span class="name">
-    {{ task.name }}
+    {{ task.name }}{% if task.is_continued %} <span class="continued-label">(continued)</span>{% endif %}
     <span class="duration">{{ task.remaining_minutes }} min</span>
     {% if task.priority == "high" %}<span class="badge badge-high">Important</span>{% endif %}
     {% if task.body_double_preferred %}<span class="badge badge-bd">🤝 with someone</span>{% endif %}

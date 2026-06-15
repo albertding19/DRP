@@ -124,6 +124,13 @@ class Task(TimeStampedModel):
         its remaining time."""
         return max(0, self.duration_minutes - self.time_spent_minutes)
 
+    @property
+    def is_continued(self) -> bool:
+        """True for the remaining slice of a task that was paused by a break
+        and is waiting to be resumed (partially done, back in the pending
+        queue). The timetable labels this row "(continued)"."""
+        return self.status == self.STATUS_PENDING and self.time_spent_minutes > 0
+
 
 class BusyBlock(TimeStampedModel):
     """A blocked-out interval the planner must avoid.
