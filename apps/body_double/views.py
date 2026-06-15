@@ -411,9 +411,10 @@ def _schedule_context(request: HttpRequest, *, book_error=None, book_initial=Non
     # Free-time hints for today, derived from the tasks timetable. Pure
     # suggestion — booking a clashing time is allowed.
     now_local = timezone.localtime()
-    work_end = now_local.replace(
-        hour=settings.TASKS_WORK_END_HOUR, minute=0, second=0, microsecond=0
-    )
+    # Body doubling is available all day, so suggest free time right up to the
+    # end of the local calendar day (midnight) rather than a fixed evening hour.
+    day_start = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
+    work_end = day_start + timedelta(days=1)
     free_today = []
     if now_local < work_end:
         min_overlap = settings.BODY_DOUBLE_BOOKING_MIN_OVERLAP_MIN

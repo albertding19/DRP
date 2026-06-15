@@ -54,10 +54,15 @@ class BreakTooSoonError(Exception):
 # Time helpers
 # ---------------------------------------------------------------------------
 def _today_window(now: datetime | None = None) -> tuple[datetime, datetime, datetime]:
-    """Returns (now_local, work_start_local, work_end_local) all in TIME_ZONE."""
+    """Returns (now_local, work_start_local, work_end_local) all in TIME_ZONE.
+
+    Work starts at TASKS_WORK_START_HOUR and runs to the end of the local
+    calendar day (midnight / 12am), so tasks schedule all the way until 12am
+    rather than stopping at a fixed evening hour.
+    """
     now = timezone.localtime(now) if now is not None else timezone.localtime()
     work_start = now.replace(hour=settings.TASKS_WORK_START_HOUR, minute=0, second=0, microsecond=0)
-    work_end = now.replace(hour=settings.TASKS_WORK_END_HOUR, minute=0, second=0, microsecond=0)
+    _, work_end = _today_local_bounds(now)
     return now, work_start, work_end
 
 

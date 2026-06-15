@@ -77,13 +77,17 @@
   </p>
   <p>It works for the next 15 minutes. One click and you're in.</p>
 
+  <p class="check-email-spam">
+    📨 <strong>Don't see it?</strong> Give it a minute, then check your
+    <strong>spam</strong> or <strong>promotions</strong> folder — our emails
+    sometimes land there.
+  </p>
+
   <p class="check-email-help">
     {% if verifying %}
-      Didn't get it? Check your spam folder, or
-      <a href="{% url 'accounts:settings' %}">go back to settings</a>.
+      Still nothing? You can <a href="{% url 'accounts:settings' %}">go back to settings</a>.
     {% else %}
-      Didn't get it? Check your spam folder, or
-      <a href="{% url 'accounts:start' %}">try a different email</a>.
+      Still nothing? You can <a href="{% url 'accounts:start' %}">try a different email</a>.
     {% endif %}
   </p>
 
@@ -105,6 +109,15 @@
   .check-email { max-width: 420px; margin: 4rem auto; padding: 0 1rem; }
   .check-email h1 { font-family: var(--font-serif); font-size: 2rem; margin: 0 0 0.5rem; }
   .check-email .lead { font-size: 1.1rem; margin: 0 0 1rem; }
+  .check-email-spam {
+    background: var(--tag-time);
+    color: var(--tag-time-ink);
+    border-radius: var(--radius-md);
+    padding: 0.7rem 0.9rem;
+    font-size: 0.9rem;
+    line-height: 1.45;
+    margin: 1.25rem 0 0;
+  }
   .check-email-help { color: var(--ink-muted); font-size: 0.9rem; margin-top: 2rem; }
   .check-email-status {
     color: var(--ink-muted);

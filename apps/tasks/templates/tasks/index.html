@@ -36,11 +36,11 @@
     {% include "tasks/_full_region.html" %}
   </div>
 
-  {% comment %}Add-task — shown on Today + To do, revealed by a button. Lives
+  {% comment %}Add-task — shown on To do only, revealed by a button. Lives
      OUTSIDE #full-region so the 422 self-replace flow (HX-Retarget
      #add-task-form) is untouched; the reveal wrapper persists when the form
      swaps itself.{% endcomment %}
-  <div x-show="tab === 'today' || tab === 'todo'" x-cloak>
+  <div x-show="tab === 'todo'" x-cloak>
     <button type="button" class="btn btn-secondary add-toggle"
             x-show="!showAddTask" x-on:click="showAddTask = true">+ Add a task</button>
     <div x-show="showAddTask" x-cloak>

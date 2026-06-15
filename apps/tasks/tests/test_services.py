@@ -248,10 +248,12 @@ class TestAutoPlan:
         t.refresh_from_db()
         assert t.scheduled_start >= now + timedelta(hours=1)
 
-    def test_after_work_end_is_noop(self, _planner_settings) -> None:
+    def test_no_room_before_midnight_is_noop(self, _planner_settings) -> None:
+        # The work day now runs to midnight (12am); a task that can't finish
+        # before 12am falls back to the backlog.
         u = _user("ap3")
         create_task(user=u, name="A", duration_minutes=30)
-        now = timezone.localtime().replace(hour=23, minute=0, second=0, microsecond=0)
+        now = timezone.localtime().replace(hour=23, minute=45, second=0, microsecond=0)
         result = auto_plan(user=u, now=now)
         assert result["placed"] == 0
         assert result["leftover"] == 1
@@ -456,13 +458,13 @@ class TestInsertBreak:
 
     def test_overflow_to_backlog(self, _break_settings) -> None:
         u = _user("br5")
-        # Pending task scheduled at 20:50 local, 30min long, work_end=21.
-        # Shift by 15 min → starts 21:05, ends 21:35 → past work_end →
-        # drop to backlog. Pass `now=20:40` so the test doesn't depend on
-        # the wall clock.
-        now = timezone.localtime().replace(hour=20, minute=40, second=0, microsecond=0)
+        # Pending task scheduled at 23:50 local, 30min long; the work day now
+        # ends at midnight. Shift by 15 min → starts 00:05, ends 00:35 → past
+        # midnight → drop to backlog. Pass `now=23:40` so the test doesn't
+        # depend on the wall clock.
+        now = timezone.localtime().replace(hour=23, minute=40, second=0, microsecond=0)
         t = create_task(user=u, name="late", duration_minutes=30)
-        future_start = now.replace(hour=20, minute=50, second=0, microsecond=0)
+        future_start = now.replace(hour=23, minute=50, second=0, microsecond=0)
         Task.objects.filter(pk=t.pk).update(scheduled_start=future_start)
         _, info = insert_break(user=u, duration_minutes=15, now=now)
         assert info["dropped"] == 1
