@@ -28,23 +28,24 @@
   </fieldset>
 
   <fieldset class="needs-row">
-    <legend>When?</legend>
+    <legend>When today?</legend>
     <div class="needs-grid">
       <label class="field">
         <span>From</span>
         <input
-          type="datetime-local" id="busy-start" name="start_at"
+          type="time" id="busy-start" name="start_at"
           value="{{ add_busy_initial.start_at|default:'' }}" required
         >
       </label>
       <label class="field">
         <span>Until</span>
         <input
-          type="datetime-local" id="busy-end" name="end_at"
+          type="time" id="busy-end" name="end_at"
           value="{{ add_busy_initial.end_at|default:'' }}" required
         >
       </label>
     </div>
+    <small class="row-hint">Both times are today.</small>
     {% if add_busy_errors.start_at %}<div class="form-error">{{ add_busy_errors.start_at }}</div>{% endif %}
     {% if add_busy_errors.end_at %}<div class="form-error">{{ add_busy_errors.end_at }}</div>{% endif %}
   </fieldset>

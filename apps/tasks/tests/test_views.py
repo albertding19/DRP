@@ -66,6 +66,18 @@ class TestAddTask:
         assert r.headers.get("HX-Retarget") == "#add-task-form"
         assert r.headers.get("HX-Reswap") == "outerHTML"
 
+    def test_add_leaves_task_in_backlog(self) -> None:
+        # Adding does NOT schedule — the task waits in the backlog ("To do")
+        # until the user clicks "Schedule my day" (tasks:plan).
+        client, user = _authed("add4")
+        client.post(
+            "/tasks/add/",
+            {"name": "Later", "duration_minutes": "30"},
+            HTTP_HX_REQUEST="true",
+        )
+        t = Task.objects.get(user=user, name="Later")
+        assert t.scheduled_start is None
+
 
 @pytest.mark.django_db
 class TestPlanEndpoint:
@@ -159,12 +171,10 @@ class TestLifecycle:
 class TestBusyEndpoint:
     def test_add_busy(self) -> None:
         client, user = _authed("bu1")
-        now = timezone.localtime()
-        start = now.replace(hour=14, minute=0, second=0, microsecond=0)
-        end = start + timedelta(hours=1)
+        # Busy blocks are today-only — the form posts `HH:MM` times.
         r = client.post(
             "/tasks/busy/add/",
-            {"name": "Lecture", "start_at": start.isoformat(), "end_at": end.isoformat()},
+            {"name": "Lecture", "start_at": "14:00", "end_at": "15:00"},
             HTTP_HX_REQUEST="true",
         )
         assert r.status_code == 200
@@ -250,7 +260,8 @@ class TestFreeWorkMode:
         r = client.post("/tasks/work/end/", HTTP_HX_REQUEST="true")
         assert r.status_code == 200
         assert b"Start work" in r.content  # toggled back
-        fake_plan.assert_called_once_with(user=user)
+        # Reflow only — ending free-work never pulls the backlog onto today.
+        fake_plan.assert_called_once_with(user=user, include_backlog=False)
         assert "free_work_started_at" not in client.session
 
     def test_room_embed_region_carries_the_button(self, client_with_session) -> None:

@@ -207,6 +207,30 @@ class TestAutoPlan:
         second = {t.id: t.scheduled_start for t in Task.objects.filter(user=u)}
         assert first == second
 
+    def test_reflow_excludes_backlog(self, _planner_settings) -> None:
+        # include_backlog=False reflows tasks already on the timetable but
+        # leaves un-scheduled backlog tasks alone.
+        u = _user("ap_reflow")
+        now = self._fixed_now()
+        scheduled = create_task(user=u, name="scheduled", duration_minutes=30)
+        Task.objects.filter(pk=scheduled.pk).update(scheduled_start=now)
+        backlog = create_task(user=u, name="backlog", duration_minutes=30)
+        auto_plan(user=u, now=now, include_backlog=False)
+        scheduled.refresh_from_db()
+        backlog.refresh_from_db()
+        assert scheduled.scheduled_start is not None
+        assert backlog.scheduled_start is None
+
+    def test_include_backlog_pulls_everything(self, _planner_settings) -> None:
+        # The explicit "Schedule my day" path (default include_backlog=True)
+        # pulls a fresh backlog task onto today.
+        u = _user("ap_full")
+        now = self._fixed_now()
+        backlog = create_task(user=u, name="backlog", duration_minutes=30)
+        auto_plan(user=u, now=now)
+        backlog.refresh_from_db()
+        assert backlog.scheduled_start is not None
+
     def test_after_work_end_is_noop(self, _planner_settings) -> None:
         u = _user("ap3")
         create_task(user=u, name="A", duration_minutes=30)

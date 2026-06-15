@@ -267,11 +267,19 @@ def _sort_for_planning(tasks: Iterable[Task]) -> list[Task]:
 
 
 @transaction.atomic
-def auto_plan(*, user, now: datetime | None = None) -> dict:
+def auto_plan(*, user, now: datetime | None = None, include_backlog: bool = True) -> dict:
     """Sort the user's pending tasks and place them into today's free slots.
 
     Sets `Task.scheduled_start` for placed tasks; clears it for leftovers
     (they fall back into the backlog).
+
+    `include_backlog` controls which pending tasks are considered:
+      - True  — the explicit "Schedule my day" action: place EVERY pending
+        task, pulling the whole backlog onto today's timetable.
+      - False — a reflow after finish / skip / delete / break / busy change:
+        only re-place tasks that are ALREADY scheduled, leaving backlog
+        tasks (``scheduled_start IS NULL``) untouched. Getting a task onto
+        the timetable stays an explicit, user-triggered action.
 
     A task with status `in_progress` is treated as locked-in-place starting
     NOW for its remaining duration — added to the busy-interval set so
@@ -286,6 +294,10 @@ def auto_plan(*, user, now: datetime | None = None) -> dict:
     # matches our test environment — the cost of dropping race protection
     # there is acceptable.
     pending_qs = Task.objects.select_for_update().filter(user=user, status=Task.STATUS_PENDING)
+    if not include_backlog:
+        # Reflow only: re-place tasks already on the timetable; leave
+        # un-scheduled backlog tasks alone (they wait for "Schedule my day").
+        pending_qs = pending_qs.filter(scheduled_start__isnull=False)
     in_progress = (
         Task.objects.select_for_update().filter(user=user, status=Task.STATUS_IN_PROGRESS).first()
     )

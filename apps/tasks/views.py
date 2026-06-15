@@ -24,7 +24,7 @@ from django.http import HttpRequest, HttpResponse, HttpResponseBadRequest
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
-from django.utils.dateparse import parse_datetime
+from django.utils.dateparse import parse_datetime, parse_time
 from django.views.decorators.http import require_GET, require_POST
 
 from .models import BusyBlock, Task
@@ -148,6 +148,19 @@ def _parse_optional_dt(raw: str | None) -> datetime | None:
     return dt
 
 
+def _parse_today_time(raw: str | None) -> datetime | None:
+    """Combine an `HH:MM` time-input value with today's local date into an
+    aware datetime. Busy blocks are always today, so the form only asks for
+    times (apps/tasks/services.add_busy_block enforces the today bound)."""
+    if not raw:
+        return None
+    t = parse_time(raw)
+    if t is None:
+        return None
+    naive = datetime.combine(timezone.localdate(), t)
+    return timezone.make_aware(naive, timezone.get_current_timezone())
+
+
 def _form_error_response(request: HttpRequest, template: str, ctx: dict, *, target: str):
     """Re-render a form partial with HX-Retarget / HX-Reswap headers so
     the form replaces itself rather than the timetable region."""
@@ -190,7 +203,8 @@ def work_end(request: HttpRequest) -> HttpResponse:
     """Leave free-work mode and replan: every remaining task is laid out
     afresh starting from the moment this was clicked."""
     request.session.pop("free_work_started_at", None)
-    auto_plan(user=request.user)  # plans from now by definition
+    # Reflow the already-scheduled tasks from now; backlog stays put.
+    auto_plan(user=request.user, include_backlog=False)
     if request.htmx:
         return _render_full_region(request)
     return redirect("tasks:index")
@@ -239,9 +253,9 @@ def add_task(request: HttpRequest) -> HttpResponse:
                 deadline=deadline,
                 body_double_preferred=body_double_preferred,
             )
-            # Auto-fold the new task into today's schedule. No "Plan my day"
-            # button — every list change re-flows the day implicitly.
-            auto_plan(user=request.user)
+            # New tasks land in the backlog ("To do"). Scheduling is explicit:
+            # the user clicks "Schedule my day" (tasks:plan) to lay the list
+            # onto the timetable.
         except InvalidTaskFieldsError as exc:
             errors["form"] = str(exc)
 
@@ -299,7 +313,8 @@ def edit_task(request: HttpRequest, task_id: int) -> HttpResponse:
         update_task(task=task, **fields)
     except InvalidTaskFieldsError as exc:
         return HttpResponseBadRequest(str(exc))
-    auto_plan(user=request.user)
+    # Reflow the timetable; editing never pulls backlog tasks onto the day.
+    auto_plan(user=request.user, include_backlog=False)
     if request.htmx:
         return _render_full_region(request)
     return redirect("tasks:index")
@@ -310,9 +325,8 @@ def edit_task(request: HttpRequest, task_id: int) -> HttpResponse:
 def delete(request: HttpRequest, task_id: int) -> HttpResponse:
     task = get_object_or_404(Task, pk=task_id, user=request.user)
     delete_task(task=task)
-    # Auto-plan after delete so any leftover tasks can slide forward into
-    # the freed slot; the response carries the freshly re-flowed schedule.
-    auto_plan(user=request.user)
+    # Reflow scheduled tasks into the freed slot; backlog stays in "To do".
+    auto_plan(user=request.user, include_backlog=False)
     if request.htmx:
         return _render_full_region(request)
     return redirect("tasks:index")
@@ -347,8 +361,9 @@ def start(request: HttpRequest, task_id: int) -> HttpResponse:
 def done(request: HttpRequest, task_id: int) -> HttpResponse:
     task = get_object_or_404(Task, pk=task_id, user=request.user)
     complete_task(task=task)
-    # Finishing early frees up time — re-flow the rest of the day.
-    auto_plan(user=request.user)
+    # Finishing early frees up time — re-flow the rest of the scheduled day.
+    # Backlog tasks stay put until the user clicks "Schedule my day".
+    auto_plan(user=request.user, include_backlog=False)
     if request.htmx:
         return _render_full_region(request)
     return redirect("tasks:index")
@@ -359,7 +374,8 @@ def done(request: HttpRequest, task_id: int) -> HttpResponse:
 def skip(request: HttpRequest, task_id: int) -> HttpResponse:
     task = get_object_or_404(Task, pk=task_id, user=request.user)
     skip_task(task=task)
-    auto_plan(user=request.user)
+    # Reflow scheduled tasks only; backlog waits for "Schedule my day".
+    auto_plan(user=request.user, include_backlog=False)
     if request.htmx:
         return _render_full_region(request)
     return redirect("tasks:index")
@@ -371,6 +387,8 @@ def skip(request: HttpRequest, task_id: int) -> HttpResponse:
 @login_required
 @require_POST
 def plan(request: HttpRequest) -> HttpResponse:
+    """The explicit "Schedule my day" action — lays the whole backlog onto
+    today's timetable (include_backlog defaults to True)."""
     auto_plan(user=request.user)
     if request.htmx:
         return _render_full_region(request)
@@ -405,8 +423,9 @@ def take_break(request: HttpRequest) -> HttpResponse:
 @require_POST
 def add_busy(request: HttpRequest) -> HttpResponse:
     name = (request.POST.get("name") or "").strip()
-    start_at = _parse_optional_dt(request.POST.get("start_at"))
-    end_at = _parse_optional_dt(request.POST.get("end_at"))
+    # Busy blocks are always today — the form sends `HH:MM` times only.
+    start_at = _parse_today_time(request.POST.get("start_at"))
+    end_at = _parse_today_time(request.POST.get("end_at"))
     errors: dict[str, str] = {}
     if not name:
         errors["name"] = "Give it a name."
@@ -417,8 +436,8 @@ def add_busy(request: HttpRequest) -> HttpResponse:
     if not errors:
         try:
             add_busy_block(user=request.user, name=name, start_at=start_at, end_at=end_at)
-            # New busy block can collide with planned tasks — re-flow now.
-            auto_plan(user=request.user)
+            # New busy block can collide with scheduled tasks — reflow them.
+            auto_plan(user=request.user, include_backlog=False)
         except InvalidTaskFieldsError as exc:
             errors["form"] = str(exc)
     if errors:
@@ -445,8 +464,9 @@ def add_busy(request: HttpRequest) -> HttpResponse:
 def delete_busy(request: HttpRequest, block_id: int) -> HttpResponse:
     block = get_object_or_404(BusyBlock, pk=block_id, user=request.user)
     delete_busy_block(block=block)
-    # Removing a booked slot opens up time — re-flow into the gap.
-    auto_plan(user=request.user)
+    # Removing a booked slot opens time — reflow the scheduled tasks into it.
+    # Backlog stays put until the user clicks "Schedule my day".
+    auto_plan(user=request.user, include_backlog=False)
     if request.htmx:
         return _render_full_region(request)
     return redirect("tasks:index")

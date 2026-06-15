@@ -48,6 +48,25 @@
     </div>
   </div>
 
+  {% comment %}Schedule my day — the explicit action that lays the To-do list
+     onto today's timetable (POSTs to tasks:plan), then jumps to the Today tab.
+     Lives outside #full-region so it stays in the Alpine `tab` scope and never
+     reaches the body-double room embed.{% endcomment %}
+  <div x-show="tab === 'todo'" x-cloak>
+    <form
+      method="post"
+      action="{% url 'tasks:plan' %}"
+      hx-post="{% url 'tasks:plan' %}"
+      hx-target="#full-region"
+      hx-swap="innerHTML"
+    >
+      {% csrf_token %}
+      <button type="submit" class="btn btn-primary btn-lg schedule-btn" x-on:click="tab = 'today'">
+        📅 Schedule my day
+      </button>
+    </form>
+  </div>
+
   {# Block-off-time — shown on Booked only. #}
   <div x-show="tab === 'booked'" x-cloak>
     <button type="button" class="btn btn-secondary add-toggle"
@@ -132,6 +151,7 @@
   #full-region[data-tab="done"]   .panel-done { display: block; }
 
   .add-toggle { margin-bottom: var(--space-4); }
+  .schedule-btn { display: block; width: 100%; margin-bottom: var(--space-4); }
 
   /* Tasks-only extras on top of the shared .needs-form. Kept page-local so
      they can't bleed onto body-double's .needs-form pages (index/schedule). */
