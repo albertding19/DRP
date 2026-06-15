@@ -374,3 +374,183 @@ button {
   padding: 0.55rem 1.1rem;
 }
 button:hover { background: var(--terracotta-soft); border-color: var(--terracotta-soft); }
+
+/* ---------------------------------------------------------------- */
+/* Tasks + dashboard shared components                              */
+/*                                                                  */
+/* Added for the Tasks/Homepage redesign so both pages drop their   */
+/* old flat white/grey blocks and inherit the warm body-double      */
+/* idiom. All rules below are ADDITIVE (new selectors only) — they  */
+/* don't touch existing rules. Pages outside scope that reuse these */
+/* names already carry their own more-specific/page-local copies    */
+/* (room.html's `.room-timetable` block; settings.html `.btn-danger`;*/
+/* friends.html `.empty-line`), so those pages are unaffected.      */
+/* ---------------------------------------------------------------- */
+
+/* NB: `.lead` is intentionally NOT defined here. Other pages (body-double,
+   accounts) already scope it as `.<page> .lead`; a bare global would bleed
+   margins onto them. The redesigned pages style `.tasks-header .lead` /
+   `.dashboard-header .lead` page-locally instead. */
+
+/* Section cards — tasks live region, room embed, dashboard panels */
+.section-card {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+  margin-bottom: var(--space-5);
+}
+.section-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-sunk);
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+}
+.section-card-header h2 {
+  margin: 0;
+  font-size: 1.05rem;
+  font-family: var(--font-serif);
+  color: var(--ink);
+}
+.section-card-body { padding: var(--space-3) var(--space-4); }
+/* Only colour/size here — no padding/margin — so the local `.empty-line`
+   copies on out-of-scope pages (e.g. accounts/friends.html) aren't shifted. */
+.empty-line { color: var(--ink-muted); font-size: 0.875rem; }
+
+/* Timetable / list rows */
+.task-row, .busy-row, .backlog-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--border-color);
+  font-size: 0.95rem;
+}
+.task-row:last-child, .busy-row:last-child, .backlog-row:last-child { border-bottom: none; }
+.task-row .time, .busy-row .time {
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-muted);
+  font-size: 0.875rem;
+  min-width: 80px;
+}
+.task-row .name, .backlog-row .name, .busy-row .name { flex: 1; }
+.task-row .duration, .backlog-row .duration {
+  color: var(--ink-muted);
+  font-size: 0.8rem;
+  margin-left: var(--space-1);
+}
+.task-row .actions, .busy-row .actions, .backlog-row .actions { display: flex; gap: var(--space-1); }
+.task-row .actions .btn, .busy-row .actions .btn, .backlog-row .actions .btn {
+  padding: 0.25rem 0.6rem;
+  font-size: 0.8rem;
+}
+
+/* Status badges — recoloured onto the warm tag swatches */
+.badge {
+  display: inline-block;
+  padding: 0.1rem 0.5rem;
+  border-radius: var(--radius-pill);
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.badge-high   { background: var(--tag-asking); color: var(--tag-asking-ink); }
+.badge-bd     { background: var(--tag-focus);  color: var(--tag-focus-ink); }
+.badge-in-progress, .badge-done { background: var(--tag-worked); color: var(--tag-worked-ink); }
+.badge-break, .badge-med { background: var(--tag-time); color: var(--tag-time-ink); }
+.badge-paused, .badge-low, .badge-skipped { background: var(--bg-sunk); color: var(--ink-muted); }
+
+/* In-progress / free-work banner (tasks region + dashboard) */
+.in-progress-banner {
+  background: var(--tag-worked);
+  color: var(--tag-worked-ink);
+  border: 1px solid #b8d4a8;
+  border-radius: var(--radius-md);
+  padding: 0.6rem 0.9rem;
+  margin-bottom: var(--space-3);
+  font-weight: 600;
+}
+
+/* Break-too-soon warning — rendered by _full_region.html (tasks index + the
+   room embed). Used nowhere else, so a global rule is safe. */
+.break-error {
+  background: var(--tag-time);
+  color: var(--tag-time-ink);
+  border: 1px solid var(--tag-time-ink);
+  border-radius: var(--radius-md);
+  padding: 0.5rem 0.75rem;
+  margin-bottom: var(--space-3);
+  font-size: 0.875rem;
+}
+
+/* Themed danger button (tasks × delete, dashboard cancel). settings.html
+   and room.html keep their own local .btn-danger, so only the in-scope
+   pages pick this up. */
+.btn-danger {
+  background: var(--bg-elevated);
+  color: var(--terracotta);
+  border-color: var(--terracotta);
+}
+.btn-danger:hover { background: var(--terracotta); color: var(--ink-inverse); border-color: var(--terracotta); }
+
+/* Large primary CTA (body-double idiom) */
+.btn-lg { font-size: 1.05rem; padding: 0.85rem 2rem; }
+
+/* "needs-form" — the body-double form-card idiom, now shared. Only the
+   properties body-double's own page-local `.needs-form` ALSO declares live
+   here, so nothing bleeds onto body_double/index.html or schedule.html.
+   Tasks-only extras (box-shadow, margin-bottom, full-width inputs) are added
+   page-locally in tasks/index.html. */
+.needs-form {
+  display: grid;
+  gap: var(--space-5);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: var(--space-5);
+}
+.needs-row { border: 0; padding: 0; margin: 0; }
+.needs-row legend {
+  font-family: var(--font-serif);
+  font-size: 1.05rem;
+  font-weight: 700;
+  margin-bottom: 0.6rem;
+  padding: 0;
+  color: var(--ink);
+}
+.needs-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: var(--space-3);
+}
+.needs-grid .field { display: grid; gap: 0.3rem; }
+.needs-grid .field > span { font-size: 0.82rem; color: var(--ink-muted); }
+.needs-actions { text-align: center; }
+.row-hint {
+  display: block;
+  color: var(--ink-muted);
+  margin-top: 0.5rem;
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+/* No margin here — many out-of-scope forms define their own `.form-error`
+   (color/size) but not margin; let each page own spacing. */
+.form-error { color: var(--terracotta); font-size: 0.8rem; }
+
+/* "Body double the ticked tasks" row on the Today card. room.html's
+   `.room-timetable .bd-select-row { display:none }` is more specific, so the
+   button stays hidden inside an active session. */
+.bd-select-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border-color);
+}

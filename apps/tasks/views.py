@@ -1,16 +1,17 @@
 """Tasks views — HTMX-aware, all login-required.
 
-Response shape (per the plan):
-  - `add`, `plan`, `break`, `busy/add`, `busy/<id>/delete`: full
-    `#timetable-region` swap + OOB partials for backlog + busy blocks.
-  - `<id>/start`: per-row swap of `#task-{id}`; HX-Redirect header
-    if body-double matched immediately.
-  - `<id>/done`, `<id>/skip`: per-row swap.
-  - `<id>/delete`: 204; client uses hx-swap="delete" on the row.
-  - Validation errors: re-render the form partial with HX-Retarget +
-    HX-Reswap headers so the form replaces itself rather than the
-    timetable.
-  - Non-HTMX clients get a 303 redirect to the index page.
+Response shape:
+  - `add`, `plan`, `break`, `work/start`, `work/end`, `busy/add`,
+    `busy/<id>/delete`, `<id>/done`, `<id>/skip`, `<id>/delete`: re-render
+    the whole live region (`_full_region.html`) for an `innerHTML` swap into
+    `#full-region`. It's cheaper to re-render the one region than to juggle
+    per-row out-of-band swaps.
+  - `<id>/start`: 204 + an `HX-Redirect` header when a body-double session
+    matched immediately; otherwise the full-region swap.
+  - Validation errors (`add`, `busy/add`): re-render the form partial with
+    `HX-Retarget` (to `#add-task-form` / `#add-busy-form`) + `HX-Reswap:
+    outerHTML` so the form replaces itself rather than the region.
+  - Non-HTMX clients get a redirect to the index page.
 """
 
 from __future__ import annotations

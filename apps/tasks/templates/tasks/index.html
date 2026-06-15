@@ -3,19 +3,58 @@
 {% block title %}Tasks — {{ PROJECT_NAME }}{% endblock %}
 
 {% block content %}
-<section class="tasks-page" x-data>
+<section class="tasks-page" x-data="{ tab: 'today', showAddTask: false, showAddBusy: false }">
   <header class="tasks-header">
-    <h1>Your day</h1>
+    <div>
+      <h1>Your day</h1>
+      <p class="lead">Plan it, do it, wrap it up.</p>
+    </div>
     <a href="{% url 'posts:feed' %}" class="btn btn-secondary">← Feed</a>
   </header>
 
-  {% include "tasks/_add_task_form.html" %}
+  {# Sticky view-switcher. Pure client-side Alpine — see the head_extra note. #}
+  <nav class="tab-bar" role="tablist" aria-label="Day sections">
+    <button type="button" class="tab-btn" role="tab"
+            :class="{ 'is-active': tab === 'today' }" :aria-selected="tab === 'today'"
+            x-on:click="tab = 'today'">📅 Today</button>
+    <button type="button" class="tab-btn" role="tab"
+            :class="{ 'is-active': tab === 'todo' }" :aria-selected="tab === 'todo'"
+            x-on:click="tab = 'todo'">📋 To do</button>
+    <button type="button" class="tab-btn" role="tab"
+            :class="{ 'is-active': tab === 'booked' }" :aria-selected="tab === 'booked'"
+            x-on:click="tab = 'booked'">🔒 Booked</button>
+    <button type="button" class="tab-btn" role="tab"
+            :class="{ 'is-active': tab === 'done' }" :aria-selected="tab === 'done'"
+            x-on:click="tab = 'done'">✅ Done</button>
+  </nav>
 
-  <div id="full-region">
+  {# data-tab drives which .tab-panel inside the region is visible. The node
+     itself is never replaced by HTMX (only its innerHTML), so the binding
+     survives every #full-region swap. The static value is the pre-Alpine
+     fallback. #}
+  <div id="full-region" data-tab="today" :data-tab="tab">
     {% include "tasks/_full_region.html" %}
   </div>
 
-  {% include "tasks/_add_busy_form.html" %}
+  {# Add-task — shown on Today + To do, revealed by a button. Lives OUTSIDE
+     #full-region so the 422 self-replace flow (HX-Retarget #add-task-form)
+     is untouched; the reveal wrapper persists when the form swaps itself. #}
+  <div x-show="tab === 'today' || tab === 'todo'" x-cloak>
+    <button type="button" class="btn btn-secondary add-toggle"
+            x-show="!showAddTask" x-on:click="showAddTask = true">+ Add a task</button>
+    <div x-show="showAddTask" x-cloak>
+      {% include "tasks/_add_task_form.html" %}
+    </div>
+  </div>
+
+  {# Block-off-time — shown on Booked only. #}
+  <div x-show="tab === 'booked'" x-cloak>
+    <button type="button" class="btn btn-secondary add-toggle"
+            x-show="!showAddBusy" x-on:click="showAddBusy = true">+ Block off time</button>
+    <div x-show="showAddBusy" x-cloak>
+      {% include "tasks/_add_busy_form.html" %}
+    </div>
+  </div>
 
   <div class="break-bar">
     <form
@@ -41,188 +80,90 @@
   [x-cloak] { display: none !important; }
 
   .tasks-page { padding-bottom: 6rem; }
-
   .tasks-header {
     display: flex;
-    align-items: baseline;
+    align-items: flex-start;
     justify-content: space-between;
-    margin-bottom: 1.5rem;
+    gap: var(--space-4);
+    margin-bottom: var(--space-4);
   }
-  .tasks-header h1 { margin: 0; }
+  .tasks-header h1 { margin: 0; font-size: 2rem; }
+  .tasks-header .lead { color: var(--ink-muted); line-height: 1.5; margin: 0.15rem 0 0; }
 
-  .btn {
-    display: inline-block;
-    padding: 0.5rem 1rem;
-    border-radius: 6px;
-    text-decoration: none;
-    font-size: 0.875rem;
-    border: none;
+  /* Sticky pill-tab bar. The tab state lives on the .tasks-page Alpine scope
+     and is mirrored onto #full-region's data-tab. The panel-visibility rules
+     below are gated on [data-tab], which only the tasks index ever sets — so
+     the same _full_region.html embedded in the body-double room (no data-tab,
+     and this stylesheet isn't loaded there) shows every panel stacked. */
+  .tab-bar {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    display: flex;
+    gap: var(--space-2);
+    flex-wrap: wrap;
+    padding: var(--space-3) 0;
+    margin-bottom: var(--space-4);
+    background: var(--bg);
+    border-bottom: 1px solid var(--border-color);
+  }
+  .tab-btn {
+    background: var(--bg-elevated);
+    color: var(--ink-muted);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-pill);
+    padding: 0.4rem 1rem;
+    font-weight: 600;
+    font-size: 0.9rem;
     cursor: pointer;
-    font-family: inherit;
   }
-  .btn-primary { background: var(--accent); color: white; }
-  .btn-primary:hover { opacity: 0.9; }
-  .btn-secondary { background: white; color: var(--fg); border: 1px solid var(--border); }
-  .btn-secondary:hover { background: #f5f5f5; }
-  .btn-danger { background: #fee; color: #c00; border: 1px solid #fcc; }
-  .btn-success { background: #e6f4ea; color: #0a6b2c; border: 1px solid #b8e0c4; }
-  .btn-break {
-    background: #fff7e6;
-    color: #8b5a00;
-    border: 2px solid #ffd180;
-    font-size: 1rem;
-    padding: 0.75rem 1.5rem;
-    font-weight: 600;
-  }
-  .btn-break:hover { background: #ffeacc; }
-  .btn-break small { font-size: 0.8rem; opacity: 0.7; margin-left: 0.5rem; }
-
-  .section-card {
-    background: white;
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    margin-bottom: 1.5rem;
-  }
-  .section-card-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0.75rem 1rem;
-    border-bottom: 1px solid var(--border);
-    background: #fafafa;
-  }
-  .section-card-header h2 {
-    margin: 0;
-    font-size: 1rem;
-    color: var(--fg);
-  }
-  .section-card-body { padding: 0.75rem 1rem; }
-
-  .empty-line { color: var(--fg-muted); font-size: 0.875rem; padding: 0.5rem 0; }
-
-  .task-row,
-  .busy-row,
-  .backlog-row {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    padding: 0.5rem 0;
-    border-bottom: 1px solid #f0f0f0;
-    font-size: 0.95rem;
-  }
-  .task-row:last-child, .busy-row:last-child, .backlog-row:last-child {
-    border-bottom: none;
-  }
-  .task-row .time, .busy-row .time {
-    font-variant-numeric: tabular-nums;
-    color: var(--fg-muted);
-    font-size: 0.875rem;
-    min-width: 80px;
-  }
-  .task-row .name { flex: 1; }
-  .task-row .duration {
-    color: var(--fg-muted);
-    font-size: 0.8rem;
-    margin-left: 0.25rem;
-  }
-  .task-row .actions, .busy-row .actions, .backlog-row .actions {
-    display: flex;
-    gap: 0.25rem;
-  }
-  .task-row .actions .btn, .busy-row .actions .btn, .backlog-row .actions .btn {
-    padding: 0.25rem 0.6rem;
-    font-size: 0.8rem;
+  .tab-btn:hover { background: var(--bg-sunk); color: var(--ink); }
+  .tab-btn.is-active {
+    background: var(--tag-worked);
+    color: var(--tag-worked-ink);
+    border-color: transparent;
   }
 
-  .badge {
-    display: inline-block;
-    padding: 0.1rem 0.5rem;
-    border-radius: 999px;
-    font-size: 0.7rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-  }
-  .badge-high { background: #fee; color: #c00; }
-  .badge-med { background: #fff7e6; color: #8b5a00; }
-  .badge-low { background: #f0f0f0; color: var(--fg-muted); }
-  .badge-bd { background: #e3eaff; color: #1e3a8a; }
-  .badge-in-progress { background: #e6f4ea; color: #0a6b2c; }
-  .badge-break { background: #fff7e6; color: #8b5a00; }
-  .badge-paused { background: #f0f0f0; color: var(--fg-muted); }
-  .badge-done { background: #e6f4ea; color: #0a6b2c; }
-  .badge-skipped { background: #f0f0f0; color: var(--fg-muted); }
+  #full-region[data-tab] .tab-panel { display: none; }
+  #full-region[data-tab="today"]  .panel-today,
+  #full-region[data-tab="todo"]   .panel-todo,
+  #full-region[data-tab="booked"] .panel-booked,
+  #full-region[data-tab="done"]   .panel-done { display: block; }
 
-  .form-row {
-    display: grid;
-    gap: 0.4rem;
-    margin-bottom: 0.75rem;
-  }
-  .form-row label {
-    font-size: 0.875rem;
-    color: var(--fg-muted);
-  }
-  .form-row input[type=text],
-  .form-row input[type=number],
-  .form-row input[type=datetime-local],
-  .form-row select {
-    font-size: 1rem;
-    padding: 0.4rem 0.6rem;
-    border-radius: 4px;
-    border: 1px solid var(--border);
-    width: 100%;
-    background: white;
-  }
-  .form-row-inline {
-    display: flex;
-    gap: 0.5rem;
-    align-items: center;
-  }
-  .form-row-inline label { margin: 0; }
-  .form-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 0.75rem;
-  }
-  .form-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 0.5rem;
-    margin-top: 0.5rem;
-  }
-  .form-error {
-    color: #c00;
-    font-size: 0.8rem;
-    margin-top: 0.25rem;
-  }
+  .add-toggle { margin-bottom: var(--space-4); }
+
+  /* Tasks-only extras on top of the shared .needs-form. Kept page-local so
+     they can't bleed onto body-double's .needs-form pages (index/schedule). */
+  .needs-form { box-shadow: var(--shadow-card); margin-bottom: var(--space-5); }
+  .needs-form input:not([type="checkbox"]):not([type="radio"]),
+  .needs-form select,
+  .needs-form textarea { width: 100%; }
+  .needs-form .form-error { margin-top: var(--space-1); }
+
+  /* Start buttons use .btn-success. Kept page-local so accounts/friends.html
+     (which also uses .btn-success but has no local copy) is left untouched. */
+  .btn-success { background: var(--tag-worked); color: var(--tag-worked-ink); border-color: #b8d4a8; }
+  .btn-success:hover { background: #c3dcb4; color: var(--tag-worked-ink); }
+
+  /* .muted is referenced by _full_region.html but isn't a global class. */
+  .muted { color: var(--ink-muted); }
 
   .break-bar {
     position: sticky;
     bottom: 1rem;
     text-align: center;
-    margin-top: 2rem;
-    padding: 0.5rem;
+    margin-top: var(--space-6);
     z-index: 10;
   }
-
-  .in-progress-banner {
-    background: linear-gradient(135deg, #e6f4ea 0%, #d1f0db 100%);
-    border: 1px solid #b8e0c4;
-    color: #0a6b2c;
-    padding: 0.75rem 1rem;
-    border-radius: 8px;
-    margin-bottom: 1rem;
-    font-weight: 600;
+  .btn-break {
+    background: var(--tag-time);
+    color: var(--tag-time-ink);
+    border: 1px solid var(--tag-time-ink);
+    border-radius: var(--radius-pill);
+    font-weight: 700;
+    padding: 0.75rem 1.5rem;
   }
-
-  .break-error {
-    background: #fff7e6;
-    border: 1px solid #ffd180;
-    color: #8b5a00;
-    padding: 0.5rem 0.75rem;
-    border-radius: 6px;
-    margin-bottom: 0.75rem;
-    font-size: 0.875rem;
-  }
+  .btn-break:hover { background: #ddc9a0; }
+  .btn-break small { font-size: 0.8rem; opacity: 0.75; margin-left: 0.4rem; }
 </style>
 {% endblock %}

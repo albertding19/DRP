@@ -1,7 +1,7 @@
 {% comment %}Add-busy-block form (lecture, meeting, appointment).{% endcomment %}
 <form
   id="add-busy-form"
-  class="section-card"
+  class="needs-form"
   method="post"
   action="{% url 'tasks:busy_add' %}"
   hx-post="{% url 'tasks:busy_add' %}"
@@ -14,41 +14,42 @@
   "
 >
   {% csrf_token %}
-  <div class="section-card-header">
-    <h2>🔒 Block off some time</h2>
-  </div>
-  <div class="section-card-body">
-    {% if add_busy_errors.form %}<div class="form-error">{{ add_busy_errors.form }}</div>{% endif %}
-    <div class="form-grid">
-      <div class="form-row">
-        <label for="busy-name">What is it?</label>
-        <input
-          type="text" id="busy-name" name="name"
-          value="{{ add_busy_initial.name|default:'' }}"
-          placeholder="Lecture, gym, lunch with friend…" required maxlength="200"
-        >
-        {% if add_busy_errors.name %}<div class="form-error">{{ add_busy_errors.name }}</div>{% endif %}
-      </div>
-      <div></div>
-      <div class="form-row">
-        <label for="busy-start">From</label>
+  {% if add_busy_errors.form %}<div class="form-error">{{ add_busy_errors.form }}</div>{% endif %}
+
+  <fieldset class="needs-row">
+    <legend>What is it?</legend>
+    <input
+      type="text" id="busy-name" name="name"
+      value="{{ add_busy_initial.name|default:'' }}"
+      placeholder="Lecture, gym, lunch with friend…" required maxlength="200"
+      aria-label="What is it?"
+    >
+    {% if add_busy_errors.name %}<div class="form-error">{{ add_busy_errors.name }}</div>{% endif %}
+  </fieldset>
+
+  <fieldset class="needs-row">
+    <legend>When?</legend>
+    <div class="needs-grid">
+      <label class="field">
+        <span>From</span>
         <input
           type="datetime-local" id="busy-start" name="start_at"
           value="{{ add_busy_initial.start_at|default:'' }}" required
         >
-        {% if add_busy_errors.start_at %}<div class="form-error">{{ add_busy_errors.start_at }}</div>{% endif %}
-      </div>
-      <div class="form-row">
-        <label for="busy-end">Until</label>
+      </label>
+      <label class="field">
+        <span>Until</span>
         <input
           type="datetime-local" id="busy-end" name="end_at"
           value="{{ add_busy_initial.end_at|default:'' }}" required
         >
-        {% if add_busy_errors.end_at %}<div class="form-error">{{ add_busy_errors.end_at }}</div>{% endif %}
-      </div>
+      </label>
     </div>
-    <div class="form-actions">
-      <button type="submit" class="btn btn-secondary">Block it off</button>
-    </div>
+    {% if add_busy_errors.start_at %}<div class="form-error">{{ add_busy_errors.start_at }}</div>{% endif %}
+    {% if add_busy_errors.end_at %}<div class="form-error">{{ add_busy_errors.end_at }}</div>{% endif %}
+  </fieldset>
+
+  <div class="needs-actions">
+    <button type="submit" class="btn btn-secondary btn-lg">Block it off</button>
   </div>
 </form>

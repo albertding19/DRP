@@ -3,6 +3,13 @@ The "live" region of the tasks page. Re-rendered in full by most POST
 endpoints (add, plan, break, busy/add, busy/<id>/delete, lifecycle
 changes). Always wraps the same four sub-sections so HTMX targets are
 stable.
+
+Each section is wrapped in a `.tab-panel .panel-*`; on the tasks index a
+sticky tab bar shows one at a time via the `#full-region[data-tab]` CSS in
+index.html. This partial is ALSO embedded in the body-double room, which sets
+no data-tab — there every panel renders, stacked, as before. The banners
+above the panels are deliberately outside the tab panels so they stay visible
+on every tab (and in the room).
 {% endcomment %}
 
 {% if break_error %}
@@ -41,98 +48,108 @@ stable.
   >{% csrf_token %}<button type="submit" class="btn btn-secondary">▶ Start work — no timer, replan when done</button></form>
 {% endif %}
 
-<div class="section-card">
-  <div class="section-card-header">
-    <h2>📅 Today, {{ today|date:"D j M" }}</h2>
+<section class="tab-panel panel-today">
+  <div class="section-card">
+    <div class="section-card-header">
+      <h2>📅 Today, {{ today|date:"D j M" }}</h2>
+    </div>
+    <div class="section-card-body">
+      {% if scheduled %}
+        {% for task in scheduled %}
+          {% include "tasks/_task_row.html" with task=task %}
+        {% endfor %}
+        <form id="bd-select-form" method="get" action="{% url 'body_double:index' %}" class="bd-select-row">
+          <button type="submit" class="btn btn-secondary">
+            🤝 Body double the ticked tasks
+          </button>
+          <small class="muted">We'll match you with someone for their combined time.</small>
+        </form>
+      {% else %}
+        <p class="empty-line">Add a task — it'll slot itself in here.</p>
+      {% endif %}
+    </div>
   </div>
-  <div class="section-card-body">
-    {% if scheduled %}
-      {% for task in scheduled %}
-        {% include "tasks/_task_row.html" with task=task %}
-      {% endfor %}
-      <form id="bd-select-form" method="get" action="{% url 'body_double:index' %}" class="bd-select-row">
-        <button type="submit" class="btn btn-secondary">
-          🤝 Body double the ticked tasks
-        </button>
-        <small class="muted">We'll match you with someone for their combined time.</small>
-      </form>
-    {% else %}
-      <p class="empty-line">Add something below — it'll slot itself in here.</p>
-    {% endif %}
-  </div>
-</div>
+</section>
 
-<div class="section-card">
-  <div class="section-card-header">
-    <h2>📋 To do later ({{ backlog|length }})</h2>
+<section class="tab-panel panel-todo">
+  <div class="section-card">
+    <div class="section-card-header">
+      <h2>📋 To do later ({{ backlog|length }})</h2>
+    </div>
+    <div class="section-card-body">
+      {% if backlog %}
+        {% for task in backlog %}
+          {% include "tasks/_backlog_row.html" with task=task %}
+        {% endfor %}
+      {% else %}
+        <p class="empty-line">Nothing on your list.</p>
+      {% endif %}
+    </div>
   </div>
-  <div class="section-card-body">
-    {% if backlog %}
-      {% for task in backlog %}
-        {% include "tasks/_backlog_row.html" with task=task %}
-      {% endfor %}
-    {% else %}
-      <p class="empty-line">Nothing on your list.</p>
-    {% endif %}
-  </div>
-</div>
+</section>
 
-<div class="section-card">
-  <div class="section-card-header">
-    {% with bd_count=body_double_bookings|length %}
-      <h2>🔒 Already booked ({{ busy_blocks|length|add:bd_count }})</h2>
-    {% endwith %}
-  </div>
-  <div class="section-card-body">
-    {% for booking in body_double_bookings %}
-      {# Read-only — managed on the body-double schedule page. #}
-      <div class="task-row">
-        <span class="name" style="flex: 1;">
-          🤝 Body double
-          {% if booking.status == "matched" %}with {{ booking.matched_with.user.nickname }}{% endif %}
-        </span>
-        <small class="muted">
-          {{ booking.agreed_start_at|default:booking.start_at|date:"H:i" }}–{{ booking.agreed_end_at|default:booking.end_at|date:"H:i" }}
-        </small>
-        <span class="actions">
-          <a href="{% url 'body_double:schedule' %}" class="btn btn-secondary" title="Manage on the schedule page">Manage</a>
-        </span>
-      </div>
-    {% endfor %}
-    {% if busy_blocks %}
-      {% for block in busy_blocks %}
-        {% include "tasks/_busy_block.html" with block=block %}
+<section class="tab-panel panel-booked">
+  <div class="section-card">
+    <div class="section-card-header">
+      {% with bd_count=body_double_bookings|length %}
+        <h2>🔒 Already booked ({{ busy_blocks|length|add:bd_count }})</h2>
+      {% endwith %}
+    </div>
+    <div class="section-card-body">
+      {% for booking in body_double_bookings %}
+        {# Read-only — managed on the body-double schedule page. #}
+        <div class="task-row">
+          <span class="name">
+            🤝 Body double
+            {% if booking.status == "matched" %}with {{ booking.matched_with.user.nickname }}{% endif %}
+          </span>
+          <small class="muted">
+            {{ booking.agreed_start_at|default:booking.start_at|date:"H:i" }}–{{ booking.agreed_end_at|default:booking.end_at|date:"H:i" }}
+          </small>
+          <span class="actions">
+            <a href="{% url 'body_double:schedule' %}" class="btn btn-secondary" title="Manage on the schedule page">Manage</a>
+          </span>
+        </div>
       {% endfor %}
-    {% elif not body_double_bookings %}
-      <p class="empty-line">Nothing booked yet.</p>
-    {% endif %}
+      {% if busy_blocks %}
+        {% for block in busy_blocks %}
+          {% include "tasks/_busy_block.html" with block=block %}
+        {% endfor %}
+      {% elif not body_double_bookings %}
+        <p class="empty-line">Nothing booked yet.</p>
+      {% endif %}
+    </div>
   </div>
-</div>
+</section>
 
-{% if completed %}
+<section class="tab-panel panel-done">
   <div class="section-card">
     <div class="section-card-header">
       <h2>✅ Wrapped up today ({{ completed|length }})</h2>
     </div>
     <div class="section-card-body">
-      {% for task in completed %}
-        <div class="task-row">
-          <span class="name" style="color: var(--fg-muted); text-decoration: line-through; flex: 1;">
-            {{ task.name }}
-          </span>
-          <span class="badge badge-{{ task.status|cut:"_" }}">{{ task.get_status_display }}</span>
-          <span class="actions">
-            <form
-              method="post"
-              action="{% url 'tasks:delete' task.id %}"
-              hx-post="{% url 'tasks:delete' task.id %}"
-              hx-target="#full-region"
-              hx-swap="innerHTML"
-              hx-confirm="Remove this from the history?"
-            >{% csrf_token %}<button type="submit" class="btn btn-danger" title="Remove">×</button></form>
-          </span>
-        </div>
-      {% endfor %}
+      {% if completed %}
+        {% for task in completed %}
+          <div class="task-row">
+            <span class="name" style="color: var(--ink-muted); text-decoration: line-through;">
+              {{ task.name }}
+            </span>
+            <span class="badge badge-{{ task.status|cut:"_" }}">{{ task.get_status_display }}</span>
+            <span class="actions">
+              <form
+                method="post"
+                action="{% url 'tasks:delete' task.id %}"
+                hx-post="{% url 'tasks:delete' task.id %}"
+                hx-target="#full-region"
+                hx-swap="innerHTML"
+                hx-confirm="Remove this from the history?"
+              >{% csrf_token %}<button type="submit" class="btn btn-danger" title="Remove">×</button></form>
+            </span>
+          </div>
+        {% endfor %}
+      {% else %}
+        <p class="empty-line">Nothing wrapped up yet.</p>
+      {% endif %}
     </div>
   </div>
-{% endif %}
+</section>

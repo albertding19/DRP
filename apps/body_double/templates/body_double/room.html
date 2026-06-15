@@ -513,5 +513,8 @@
   .room-timetable .in-progress-banner { background: #e6f4ea; color: #0a6b2c; border-radius: 8px; padding: 0.5rem 0.75rem; margin-bottom: 0.75rem; font-size: 0.9rem; }
   .room-timetable .bd-select-row,
   .room-timetable .bd-select { display: none; } /* already in a session */
+  /* The tasks region wraps each card in a .tab-panel for the tasks-index tab
+     bar. The room sets no data-tab, so all panels show — make that explicit. */
+  .room-timetable .tab-panel { display: block; }
 </style>
 {% endblock %}

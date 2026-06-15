@@ -26,6 +26,17 @@
  * delivered the event — message types are globally unique.
  */
 
+// htmx 1.9.x does not swap 4xx responses by default. The tasks add-task /
+// add-busy forms intentionally reply 422 + HX-Retarget/HX-Reswap to replace
+// themselves with inline validation errors (apps/tasks/views.py
+// `_form_error_response`). 422 is used for that flow only, so opt it in here.
+document.addEventListener("htmx:beforeSwap", (event) => {
+  if (event.detail.xhr && event.detail.xhr.status === 422) {
+    event.detail.shouldSwap = true;
+    event.detail.isError = false;
+  }
+});
+
 document.addEventListener("alpine:init", () => {
   Alpine.store("ws", {
     /** path → { socket, backoff, closedByUser } */

@@ -5,7 +5,7 @@ region instead.
 {% endcomment %}
 <form
   id="add-task-form"
-  class="section-card"
+  class="needs-form"
   method="post"
   action="{% url 'tasks:add' %}"
   hx-post="{% url 'tasks:add' %}"
@@ -18,66 +18,73 @@ region instead.
   "
 >
   {% csrf_token %}
-  <div class="section-card-header">
-    <h2>➕ Add something to do</h2>
-  </div>
-  <div class="section-card-body">
-    {% if add_task_errors.form %}
-      <div class="form-error">{{ add_task_errors.form }}</div>
-    {% endif %}
-    <div class="form-row">
-      <label for="task-name">What's the thing?</label>
-      <input
-        type="text" id="task-name" name="name"
-        value="{{ add_task_initial.name|default:'' }}"
-        placeholder="Read chapter 3, email tutor, tidy desk…" required maxlength="200"
-      >
-    </div>
-    <div class="form-grid">
-      <div class="form-row">
-        <label for="task-duration">How long? (in minutes)</label>
+  {% if add_task_errors.form %}
+    <div class="form-error">{{ add_task_errors.form }}</div>
+  {% endif %}
+
+  <fieldset class="needs-row">
+    <legend>What's the thing?</legend>
+    <input
+      type="text" id="task-name" name="name"
+      value="{{ add_task_initial.name|default:'' }}"
+      placeholder="Read chapter 3, email tutor, tidy desk…" required maxlength="200"
+      aria-label="What's the thing?"
+    >
+  </fieldset>
+
+  <fieldset class="needs-row">
+    <legend>How long &amp; how important?</legend>
+    <div class="needs-grid">
+      <label class="field">
+        <span>Minutes</span>
         <input
           type="number" id="task-duration" name="duration_minutes"
           value="{{ add_task_initial.duration_minutes|default:'30' }}"
           min="5" max="600" step="5" required
         >
-        {% if add_task_errors.duration_minutes %}
-          <div class="form-error">{{ add_task_errors.duration_minutes }}</div>
-        {% endif %}
-      </div>
-      <div class="form-row">
-        <label for="task-priority">How important?</label>
+      </label>
+      <label class="field">
+        <span>Priority</span>
         <select id="task-priority" name="priority">
           {% for value, label in priority_choices %}
             <option value="{{ value }}" {% if add_task_initial.priority == value %}selected{% endif %}>{{ label }}</option>
           {% endfor %}
         </select>
-      </div>
-      <div class="form-row">
-        <label for="task-energy">How much focus?</label>
+      </label>
+      <label class="field">
+        <span>Focus</span>
         <select id="task-energy" name="energy">
           {% for value, label in energy_choices %}
             <option value="{{ value }}" {% if add_task_initial.energy == value %}selected{% endif %}>{{ label }}</option>
           {% endfor %}
         </select>
-      </div>
-      <div class="form-row">
-        <label for="task-deadline">Due by (optional)</label>
+      </label>
+      <label class="field">
+        <span>Due by (optional)</span>
         <input
           type="datetime-local" id="task-deadline" name="deadline"
           value="{{ add_task_initial.deadline|default:'' }}"
         >
-      </div>
+      </label>
     </div>
-    <div class="form-row form-row-inline">
+    {% if add_task_errors.duration_minutes %}
+      <div class="form-error">{{ add_task_errors.duration_minutes }}</div>
+    {% endif %}
+    <small class="row-hint">Roughly how many minutes — we'll slot it into your day automatically.</small>
+  </fieldset>
+
+  <fieldset class="needs-row">
+    <legend>Do it with someone?</legend>
+    <label class="tag-selectable">
       <input
         type="checkbox" id="task-bd" name="body_double_preferred"
         {% if add_task_initial.body_double_preferred %}checked{% endif %}
       >
-      <label for="task-bd">🤝 I'd like to do this with someone</label>
-    </div>
-    <div class="form-actions">
-      <button type="submit" class="btn btn-primary">Save it</button>
-    </div>
+      🤝 I'd like to do this with someone
+    </label>
+  </fieldset>
+
+  <div class="needs-actions">
+    <button type="submit" class="btn btn-primary btn-lg">Save it</button>
   </div>
 </form>
