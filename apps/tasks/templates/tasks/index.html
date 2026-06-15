@@ -28,17 +28,18 @@
             x-on:click="tab = 'done'">✅ Done</button>
   </nav>
 
-  {# data-tab drives which .tab-panel inside the region is visible. The node
-     itself is never replaced by HTMX (only its innerHTML), so the binding
+  {% comment %}data-tab drives which .tab-panel inside the region is visible. The
+     node itself is never replaced by HTMX (only its innerHTML), so the binding
      survives every #full-region swap. The static value is the pre-Alpine
-     fallback. #}
+     fallback.{% endcomment %}
   <div id="full-region" data-tab="today" :data-tab="tab">
     {% include "tasks/_full_region.html" %}
   </div>
 
-  {# Add-task — shown on Today + To do, revealed by a button. Lives OUTSIDE
-     #full-region so the 422 self-replace flow (HX-Retarget #add-task-form)
-     is untouched; the reveal wrapper persists when the form swaps itself. #}
+  {% comment %}Add-task — shown on Today + To do, revealed by a button. Lives
+     OUTSIDE #full-region so the 422 self-replace flow (HX-Retarget
+     #add-task-form) is untouched; the reveal wrapper persists when the form
+     swaps itself.{% endcomment %}
   <div x-show="tab === 'today' || tab === 'todo'" x-cloak>
     <button type="button" class="btn btn-secondary add-toggle"
             x-show="!showAddTask" x-on:click="showAddTask = true">+ Add a task</button>
