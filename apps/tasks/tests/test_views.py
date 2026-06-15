@@ -308,9 +308,7 @@ class TestContinuedLabel:
         client, user = _authed("cont_row")
         t = create_task(user=user, name="Essay", duration_minutes=30)
         # 15 min already done, rescheduled onto today after a break.
-        Task.objects.filter(pk=t.pk).update(
-            time_spent_minutes=15, scheduled_start=timezone.now()
-        )
+        Task.objects.filter(pk=t.pk).update(time_spent_minutes=15, scheduled_start=timezone.now())
         r = client.get("/tasks/")
         assert r.status_code == 200
         assert b"Essay" in r.content
