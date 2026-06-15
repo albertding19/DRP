@@ -1,130 +1,191 @@
-# DRP — Reddit-style ADHD peer-support app
+# unmasked — *The Right Match*
 
-A peer-support webapp for adults newly referred or diagnosed with ADHD.
-Built for Imperial College London × Royal College of Art's *Designing for
-Real People* (DRP 2026).
+**An ADHD focus & connection app: work alongside a real person (body-doubling), plan your day automatically, and find peer support.**
+
+Built for Imperial College London × Royal College of Art's *Designing for Real People* (DRP 2026).
 
 [![CI](https://github.com/albertding19/DRP/actions/workflows/ci.yml/badge.svg)](https://github.com/albertding19/DRP/actions/workflows/ci.yml)
 
-**Live:** https://drp-web.onrender.com *(once Render deploys; see `render.yaml`)*
+**Live:** https://drp-web-5xwh.onrender.com *(Render free tier — see [Deployment](#deployment); custom domain `drp.it.com` once DNS + cert are live)*
 
-Browse a feed of problems / coping strategies, share your own, upvote,
-comment. All actions land in real time — votes and comments push to other
-viewers via WebSocket. Pick a nickname to enter; no email or password.
+---
+
+## What it is
+
+People with ADHD often know *what* to do but struggle to start and stay on task alone. **unmasked** tackles that with three connected ideas:
+
+- **🤝 Body double** — get matched with another user (or a friend) and work alongside them over live video. Our server only mints a short-lived room token; the browser streams directly to LiveKit Cloud, and your call identity is just your nickname.
+- **📅 A day that plans itself** — drop tasks into a To-do list, block off the times you're busy, then hit **Schedule my day** and the planner lays everything onto a timetable around your commitments (UK time).
+- **💬 Peer support** — a calm, moderated feed of problems and coping strategies, plus topic communities and a friends list.
+
+Everything is **real-time and multi-user**: votes, comments, new posts and match events push to other viewers over WebSocket. Sign-in is **passwordless** — pick a nickname to start; claim your account later with a magic link or Google.
+
+### Feature map (left-sidebar nav)
+
+| Section | What it does |
+|---|---|
+| **Home** | Personal dashboard — today's plan, body-double status, your communities, feed pulse |
+| **Tasks** | To-do backlog → "Schedule my day" → auto-planned timetable; busy blocks & breaks |
+| **Body double** | Find a focus partner now or schedule one; live LiveKit video room |
+| **Friends** | Add/manage friends; body-double with people you know |
+| **Communities** | Browse / create topic communities |
+| **Feed** | Forum of posts, threaded comments, upvotes, tags, full-text search |
+
+---
+
+## Tech stack
+
+A **server-rendered hypermedia app** — no SPA, no JS build step.
+
+- **Backend:** Python · Django 5.1 · Django Channels, served by **Daphne** (one ASGI process for HTTP **and** WebSocket)
+- **Frontend:** Django Templates + **HTMX** (server-rendered HTML fragments) + **Alpine.js** (light client state); ~25 KB of progressive enhancement
+- **Data:** **PostgreSQL** (system of record, via the Django ORM) · **Redis** (Channels channel layer — the real-time pub/sub bus)
+- **External services:** **LiveKit** (WebRTC video) · **Anthropic Claude** (Haiku — L2 content moderation) · **Resend** (magic-link email) · **Google OAuth**
+- **Ops:** **Render** (web + managed Postgres + Redis from `render.yaml`) · **GitHub Actions** CI · Docker Compose for local DB/cache only
+
+See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the diagram and module map, and [`docs/ARCHITECTURE_DECISIONS.md`](docs/ARCHITECTURE_DECISIONS.md) for the *why* behind each choice.
+
+---
 
 ## Quickstart
 
-Prerequisites: Python 3.12, Docker.
+**Prerequisites:** Python 3.12+ and Docker.
 
 ```bash
-# 1. Start Postgres + Redis
+# 1. Start Postgres + Redis (the app itself runs on the host)
 docker compose up -d postgres redis
 
-# 2. Venv + deps
+# 2. Virtualenv + dependencies
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 
-# 3. Env
+# 3. Environment
 cp .env.example .env
 
-# 4. Migrate + run
+# 4. Migrate + run (Daphne serves HTTP + WebSocket)
 python manage.py migrate
 daphne -b 127.0.0.1 -p 8000 config.asgi:application
 ```
 
-Visit `http://127.0.0.1:8000/` — you'll be redirected to pick a nickname.
+Open **http://127.0.0.1:8000/** — you'll be redirected to pick a nickname, then land on your dashboard.
 
-## Tests + lint
+> The app runs natively on the host (not in a container) so `manage.py` and IDE debuggers work without indirection. Docker Compose only provides Postgres + Redis.
+
+---
+
+## Tests & lint
 
 ```bash
-pytest                  # all tests
+pytest                  # full suite (Postgres-backed; uses config.settings.test)
 ruff check .            # lint
 ruff format .           # format
 ```
 
-CI runs all three on every push and PR to `main`.
+- Tests live in each app's `tests/` package and run under `config.settings.test` (in-memory channel layer, no network — the Claude judge is auto-stubbed; opt into live API tests with `-m live`).
+- Coverage: `pytest --cov=apps --cov=config` (CI gates at ≥40%).
 
-## CI / CD
+---
 
-| Step | Where |
+## Configuration
+
+Settings are environment-driven via `django-environ`, split by target:
+`config/settings/{base,dev,test,prod}.py` (select with `DJANGO_SETTINGS_MODULE`).
+
+Key variables (see `.env.example` and `render.yaml`):
+
+| Variable | Purpose |
 |---|---|
-| **CI** | GitHub Actions: ruff + pytest + migrate-check + ASGI-load + collectstatic |
-| **CD** | Render auto-deploy on merge to `main` (see `render.yaml`) |
-| **Public URL** | `https://drp-web.onrender.com` |
-| **CD evidence** | `/version` returns the deployed commit SHA |
+| `SECRET_KEY`, `DEBUG`, `ALLOWED_HOSTS` | Django core |
+| `DATABASE_URL` | PostgreSQL connection |
+| `REDIS_URL` | Channels channel layer |
+| `ANTHROPIC_API_KEY` | Claude (Haiku) L2 moderation — **fails open** if unset |
+| `LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET` / `LIVEKIT_URL` | Body-double video |
+| `RESEND_API_KEY` / `DEFAULT_FROM_EMAIL` | Magic-link email |
+| `GOOGLE_OAUTH_CLIENT_ID` / `_SECRET` / `_REDIRECT_URI` | Google sign-in |
+| `TASKS_WORK_START_HOUR` / `TASKS_WORK_END_HOUR` / `TASKS_BREAK_MINUTES` | Day-planner window & breaks |
 
-Render's free tier sleeps after ~15 min idle. For the M2 demo, ping
-`/healthz` from [UptimeRobot](https://uptimerobot.com) 30 min before the
-slot to wake the dyno.
+The app **degrades gracefully** when optional services are missing: moderation falls open, the Google button hides, and video features are unavailable rather than crashing.
 
-## Architecture
+---
 
-See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the one-page diagram
-and module ownership table.
+## Deployment
 
-Full implementation plan: `/Users/albertding/.claude/plans/we-are-making-a-nested-dawn.md`
+One file provisions everything on **Render**: [`render.yaml`](render.yaml) declares a web service (Daphne), managed Postgres, and Redis (Frankfurt region).
+
+- **CD:** merge to `main` → Render auto-deploys (build runs `collectstatic` + `migrate`).
+- **Health:** `/healthz` (JSON liveness) · `/version` (deployed commit SHA — CD evidence).
+- **Free-tier caveat:** the web service sleeps after ~15 min idle (~30 s cold start). Before a demo, ping `/healthz` from [UptimeRobot](https://uptimerobot.com) ~30 min ahead. Postgres free tier expires after 90 days.
+- Secrets marked `sync: false` in `render.yaml` (Anthropic / LiveKit / Resend / Google) are set in the Render dashboard, not committed.
+
+### CI
+
+GitHub Actions (`.github/workflows/ci.yml`) runs on every push/PR to `main`:
+`ruff check` → `ruff format --check` → **ASGI loads** → `makemigrations --check` → `pytest --cov` → `collectstatic` smoke.
+
+---
 
 ## Project structure
 
 ```
-config/                 # Django project (settings, urls, asgi)
+config/                 # Django project: settings/{base,dev,test,prod}, urls, asgi
 apps/
-  core/                 # base templates, healthz, version, middleware
-  accounts/             # custom User, nickname picker
-  posts/                # Post model + feed              (Wed 27 May)
-  comments/             # threaded comments              (Mon 1 Jun)
-  votes/                # generic Vote + cast service    (Wed 27 May)
-  tags/                 # Tag model + tag pages          (M3, 1 Jun)
-  search/               # PG full-text search            (M3, 1 Jun)
-  realtime/             # Channels consumers + broadcast (Thu 28 May)
-static/                 # css, htmx, alpine, realtime.js
-templates/              # base.html
+  core/                 # dashboard home, base templates, /healthz, /version, middleware
+  accounts/             # custom User (nickname), passwordless auth + Google OAuth, friends
+  tasks/                # To-do backlog + auto-planned timetable, busy blocks, breaks
+  body_double/          # matchmaking + scheduled bookings + LiveKit video rooms
+  posts/                # forum feed + posts
+  comments/             # threaded comments
+  votes/                # generic upvotes
+  tags/                 # tags / category pages
+  search/               # PostgreSQL full-text search
+  communities/          # topic communities + membership
+  moderation/           # 2-layer filter: L1 keyword + L2 Claude (fail-open)
+  realtime/             # Channels consumers + broadcast (WebSocket fan-out)
+static/                 # site.css, htmx, alpine, realtime.js, icons
+templates/              # base.html (olive header + sidebar shell)
+scripts/                # architecture-diagram generators (python-pptx, icon pipeline)
+docs/                   # ARCHITECTURE.md, ARCHITECTURE_DECISIONS.md, diagrams
 .github/workflows/      # CI
-render.yaml             # CD blueprint
+docker-compose.yml      # local Postgres + Redis
+render.yaml             # Render blueprint (web + Postgres + Redis)
 ```
 
-## Milestones
+**Swappable seams** (set via `config/settings`): the body-double **matching strategy**
+(default `TimetableAwareStrategy`) and the **video provider** (`LiveKitProvider`) are both
+behind interfaces, so they can be changed without touching call sites.
+
+---
+
+## External services — production setup
+
+The login and video features need credentials configured outside the repo. The code degrades gracefully without them, but for a real deployment:
+
+1. **Resend (magic-link email).** Create an account, **verify a sending domain** (SPF + DKIM), generate an API key → set `RESEND_API_KEY` on Render. `DEFAULT_FROM_EMAIL` must use the verified domain — the `onboarding@resend.dev` sandbox sender only delivers to the account owner's own address.
+2. **Google OAuth.** Cloud Console → Credentials → OAuth 2.0 Client ID (Web). Authorised redirect URIs must match exactly:
+   - `http://localhost:8000/accounts/oauth/google/callback/` (dev)
+   - `https://drp-web-5xwh.onrender.com/accounts/oauth/google/callback/` (prod)
+
+   While the consent screen is in dev mode, add testers under "Test users". Set `GOOGLE_OAUTH_CLIENT_ID` and `GOOGLE_OAUTH_CLIENT_SECRET`.
+3. **LiveKit Cloud (body-double video).** Create a project, then set `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`, and `LIVEKIT_URL`. The server only mints room-scoped JWTs; media never passes through the backend.
+4. **Anthropic (content moderation).** Set `ANTHROPIC_API_KEY` to enable L2 (Claude Haiku) judging. If absent, L2 fails open and content posts through the L1 keyword filter only.
+
+---
+
+## Milestones (DRP 2026)
 
 | Date | Milestone | Weight |
 |---|---|---|
 | Thu 22 May | M1 — Elevator pitch | 5% |
-| **Fri 29 May** | **M2 — Concept Development** | **5%** |
+| Fri 29 May | M2 — Concept Development | 5% |
 | Mon 2 Jun | Law TRA | 10% |
 | Fri 5 Jun | M3 — Iterative Development | 5% |
-| Fri 12 Jun | M4 — More Iterative Development | 5% |
-| 16–17 Jun | Final Demo + Presentation | 50% |
+| Fri 12 Jun | M4 — Iterative Development | 5% |
+| 16–17 Jun | **Final Demo + Presentation** | **50%** |
 | Thu 19 Jun | Project Documentation | 20% |
 
-## Auth — prerequisites before email + Google sign-in work in prod
-
-The login service ships using **Resend SMTP** for magic-link emails and
-**Google OAuth** for one-click sign-in. Both need to be configured outside
-the repo before they work on Render. The code degrades gracefully when
-they're missing (the welcome page hides the Google button, and email
-sends fail with a user-visible error) but for production you need:
-
-1. **Resend account + verified domain.**
-   - Sign up at https://resend.com
-   - Add and verify a sending domain (SPF + DKIM DNS records). Without
-     verification, magic-link emails land in spam or get bounced.
-   - **Demo shortcut:** leave `DEFAULT_FROM_EMAIL` at the default
-     `unmasked <onboarding@resend.dev>` — Resend allows this shared
-     sender for early projects but deliverability is degraded.
-   - Generate an API key, set it in Render as `RESEND_API_KEY`.
-2. **Google OAuth client.**
-   - Cloud Console → APIs & Services → Credentials → OAuth 2.0 Client ID
-     → Web application.
-   - Authorised redirect URIs (must match exactly):
-     - `http://localhost:8000/accounts/oauth/google/callback/` (dev)
-     - `https://drp-web-5xwh.onrender.com/accounts/oauth/google/callback/` (prod)
-   - While the OAuth consent screen is in dev mode, add yourself + any
-     testers under "Test users".
-   - Set `GOOGLE_OAUTH_CLIENT_ID` and `GOOGLE_OAUTH_CLIENT_SECRET` in
-     Render. `GOOGLE_OAUTH_REDIRECT_URI` defaults to the prod URL above
-     and can be left as-is.
+---
 
 ## Acknowledgements
 
-DRP module: Imperial DoC × Royal College of Art Service Design.
-Research interviews with adults with ADHD + NHS practitioners conducted
-20 May 2026 (full notes in `interviews/`).
+DRP module: Imperial College London Department of Computing × Royal College of Art Service Design.
+User research with adults with ADHD and NHS practitioners (notes in `interviews/`).
