@@ -154,7 +154,9 @@ h1, h2, h3, h4 {
   color: rgba(254, 252, 247, 0.85);
   font-size: 0.875rem;
   font-family: var(--font-sans);
+  text-decoration: none;
 }
+.site-user:hover { color: rgba(254, 252, 247, 1); text-decoration: underline; }
 
 .site-shell {
   display: grid;

@@ -40,7 +40,7 @@
           </form>
         {% endif %}
       {% endwith %}
-      <span class="site-user">{{ request.user.nickname }}</span>
+      <a class="site-user" href="{% url 'accounts:settings' %}" title="Account settings">{{ request.user.nickname }}</a>
     {% endif %}
   </header>
 
@@ -63,6 +63,7 @@
           <li><a href="{% url 'accounts:friends' %}" class="{% if vn == 'accounts:friends' %}active{% endif %}">Friends</a></li>
           <li><a href="{% url 'communities:list' %}" class="{% if 'communities' in vn %}active{% endif %}">Communities</a></li>
           <li><a href="{% url 'posts:feed' %}" class="{% if 'posts:' in vn %}active{% endif %}">Feed</a></li>
+          <li><a href="{% url 'accounts:settings' %}" class="{% if vn == 'accounts:settings' %}active{% endif %}">Settings</a></li>
         </ul>
 
         {% comment %}
