@@ -133,6 +133,51 @@ async def test_matchmaking_consumer_ignores_other_users() -> None:
     await comm.disconnect()
 
 
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.asyncio
+async def test_matchmaking_recheck_repairs_stuck_pair(settings) -> None:
+    """A `recheck` ping over the matchmaking WS re-runs the matcher: two
+    users stuck waiting (no match at enqueue) pair once one has aged into a
+    looser phase, and the requester is pushed `match_found`."""
+    from datetime import timedelta
+
+    from channels.db import database_sync_to_async
+    from django.utils import timezone
+
+    from apps.accounts.models import User
+    from apps.body_double.models import PoolTicket
+    from apps.body_double.services import enqueue
+
+    settings.BODY_DOUBLE_MATCHING_STRATEGY = (
+        "apps.body_double.matching.preferences.PreferenceMatchingStrategy"
+    )
+    settings.BODY_DOUBLE_STRICT_S = 30
+
+    @database_sync_to_async
+    def _setup() -> int:
+        a = User.objects.create_anonymous(nickname="ws_rm_a")
+        b = User.objects.create_anonymous(nickname="ws_rm_b")
+        ta, _ = enqueue(user=a, duration_minutes=60)
+        _tb, s = enqueue(user=b, duration_minutes=30)
+        assert s is None  # stuck at enqueue
+        PoolTicket.objects.filter(pk=ta.pk).update(
+            created_at=timezone.now() - timedelta(seconds=35)
+        )
+        return b.id
+
+    b_id = await _setup()
+    comm = WebsocketCommunicator(application, f"/ws/matchmaking/{b_id}/")
+    connected, _ = await comm.connect()
+    assert connected
+
+    await comm.send_json_to({"type": "recheck"})
+    msg = await comm.receive_json_from()
+    assert msg["type"] == "match_found"
+    assert msg["payload"]["room_url"].startswith("/body-double/room/")
+
+    await comm.disconnect()
+
+
 @pytest.mark.asyncio
 async def test_signin_consumer_receives_redeemed_event() -> None:
     """The check-email page subscribes to /ws/signin/<token_id>/ and gets

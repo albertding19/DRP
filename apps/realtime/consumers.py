@@ -111,6 +111,37 @@ class MatchmakingConsumer(AsyncJsonWebsocketConsumer):
         if group:
             await self.channel_layer.group_discard(group, self.channel_name)
 
+    async def receive_json(self, content: dict, **kwargs) -> None:  # noqa: ARG002
+        """Client ping that re-runs the matcher for this user.
+
+        The matching phases loosen with elapsed time, but `find_match` is
+        otherwise only run at enqueue — so the waiting page sends
+        `{"type": "recheck"}` over this socket every few seconds, letting a
+        ticket that has aged into a looser phase pair with a stuck partner.
+        The partner is notified via the broadcast inside `try_rematch`; this
+        socket pushes `match_found` to ITS OWN user on success.
+        """
+        if content.get("type") != "recheck":
+            return
+        from channels.db import database_sync_to_async
+
+        from apps.body_double.services import try_rematch
+
+        try:
+            session = await database_sync_to_async(try_rematch)(user_id=self.user_id)
+        except Exception:  # noqa: BLE001 — transient (lock contention); client re-pings
+            return
+        if session is not None:
+            await self.send_json(
+                {
+                    "type": "match_found",
+                    "payload": {
+                        "session_id": session.id,
+                        "room_url": f"/body-double/room/{session.id}/",
+                    },
+                }
+            )
+
     async def match_found(self, event: dict) -> None:
         await self.send_json({"type": "match_found", "payload": event["payload"]})
 

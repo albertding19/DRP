@@ -83,6 +83,16 @@ document.addEventListener("alpine:init", () => {
       }
     },
 
+    /** Send a JSON message over the socket for `path`, if it's open.
+     *  Silently no-ops if the socket isn't connected yet — the caller
+     *  (e.g. the waiting page's recheck tick) just retries on its next tick. */
+    send(path, data) {
+      const entry = this.sockets[path];
+      if (entry && entry.socket && entry.socket.readyState === WebSocket.OPEN) {
+        entry.socket.send(JSON.stringify(data));
+      }
+    },
+
     _open(path) {
       const entry = this.sockets[path];
       if (!entry) return;

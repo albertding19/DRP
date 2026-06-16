@@ -133,16 +133,32 @@ def enqueue(  # type: ignore[no-untyped-def]
     except IntegrityError as exc:
         raise AlreadyInPoolError("You already have an active body-double request.") from exc
 
+    session = _pair_ticket(ticket)
+    return ticket, session
+
+
+def _pair_ticket(ticket: PoolTicket) -> BodyDoubleSession | None:
+    """Try to pair an already-created WAITING `ticket` with a partner.
+
+    Shared by `enqueue` (at join time) and `try_rematch` (when a waiting
+    client pings over the matchmaking WebSocket as its ticket ages into the
+    looser phases). On success it creates/attaches the session, marks both
+    tickets MATCHED, notifies the PARTNER over their matchmaking WS, and
+    returns the session. The user holding `ticket` is notified separately —
+    by their POST redirect (`enqueue`) or by the consumer pushing to itself
+    (`try_rematch`).
+
+    MUST run inside the caller's `transaction.atomic`; `find_match` takes the
+    `select_for_update` locks that serialise concurrent matching.
+    """
     partner = _strategy().find_match(ticket)
     if partner is None:
-        return ticket, None
+        return None
 
     # A waiting ticket that still points at an ACTIVE session is a REFILL
-    # ticket — its holder is alone in a room whose partner left. Join
-    # their room instead of opening a new one; the new user's POST
-    # response redirects them straight in, and the survivor just sees a
-    # tile appear. (A stale pointer to an ended session falls through to
-    # the normal fresh-room path below.)
+    # ticket — its holder is alone in a room whose partner left. Join their
+    # room instead of opening a new one. (A stale pointer to an ended session
+    # falls through to the normal fresh-room path below.)
     if partner.session_id is not None:
         existing = (
             BodyDoubleSession.objects.select_for_update()
@@ -151,22 +167,22 @@ def enqueue(  # type: ignore[no-untyped-def]
         )
         if existing is not None:
             _attach_refill(session=existing, refill_ticket=partner, joining_ticket=ticket)
-            return ticket, existing
+            return existing
 
     # Found a waiting partner — create the session, mark both matched.
     room_id = uuid4().hex
     _video_provider().create_room(room_id=room_id, max_participants=2)
 
-    # Agreed duration = MIN of the two declared durations. Both leave when
-    # the shorter user is done. Falls back to the requester's duration if
-    # the partner row is missing it (legacy data).
-    partner_duration = partner.duration_minutes or duration_minutes
-    agreed = min(duration_minutes, partner_duration)
+    # Agreed duration = MIN of the two declared durations. Both leave when the
+    # shorter user is done. Falls back to the ticket's duration if the partner
+    # row is missing it (legacy data).
+    partner_duration = partner.duration_minutes or ticket.duration_minutes
+    agreed = min(ticket.duration_minutes, partner_duration)
 
     session = BodyDoubleSession.objects.create(
         room_id=room_id,
         user_a=partner.user,  # whoever was waiting first
-        user_b=user,
+        user_b=ticket.user,
         status=BodyDoubleSession.STATUS_ACTIVE,
         agreed_duration_minutes=agreed,
     )
@@ -185,12 +201,32 @@ def enqueue(  # type: ignore[no-untyped-def]
 
     PoolTicket.objects.filter(pk=partner.pk).update(matched_with=ticket)
 
-    # Push the WS event to the OTHER user — they're the one sitting on
-    # the waiting page. The current user is about to be redirected to the
-    # room by the view, so they don't need a WS message.
+    # Push the WS event to the PARTNER (sitting on the waiting page). The
+    # ticket holder is notified by the caller.
     broadcast.broadcast_match_found(notify_user_id=partner.user_id, session=session)
+    return session
 
-    return ticket, session
+
+@transaction.atomic
+def try_rematch(*, user_id: int) -> BodyDoubleSession | None:
+    """Re-run the matcher for a user's existing WAITING ticket.
+
+    The phase schedule loosens with elapsed time, but `find_match` is only run
+    at enqueue — so two users who didn't pair on the way in would never be
+    re-evaluated. The waiting page pings this over the matchmaking WebSocket
+    every few seconds; as a ticket ages past STRICT_S / FALLBACK_S / LOOSE_S it
+    becomes eligible for a looser pairing here. No-op (returns None) when the
+    user has no waiting ticket (already matched, cancelled, or never queued).
+    """
+    ticket = (
+        PoolTicket.objects.select_for_update()
+        .select_related("user")
+        .filter(user_id=user_id, status=PoolTicket.STATUS_WAITING)
+        .first()
+    )
+    if ticket is None:
+        return None
+    return _pair_ticket(ticket)
 
 
 @transaction.atomic

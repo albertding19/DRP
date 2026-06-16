@@ -55,3 +55,56 @@ class TestFIFOStrategy:
         caller = self._make_ticket("seeking_partner")
         with transaction.atomic():
             assert FIFOStrategy().find_match(caller) is None
+
+
+@pytest.mark.django_db(transaction=True)
+class TestRematchOnAging:
+    """`find_match` only runs at enqueue; `try_rematch` re-runs it for a
+    waiting ticket so the time-based phase loosening can fire for two users
+    who were stuck waiting — the WS-driven recheck path."""
+
+    def test_stuck_pair_matches_after_aging(self, settings) -> None:
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        from apps.body_double.services import enqueue, try_rematch
+
+        # Exercise the preference phases directly (no timetable dimension)
+        # with deterministic thresholds.
+        settings.BODY_DOUBLE_MATCHING_STRATEGY = (
+            "apps.body_double.matching.preferences.PreferenceMatchingStrategy"
+        )
+        settings.BODY_DOUBLE_STRICT_S = 30
+        settings.BODY_DOUBLE_FALLBACK_S = 60
+        settings.BODY_DOUBLE_LOOSE_S = 120
+
+        a = User.objects.create_anonymous(nickname="rm_partner")
+        b = User.objects.create_anonymous(nickname="rm_caller")
+
+        # A waits (60 min). B joins (30 min): the ±15 duration gate excludes
+        # A at phase 1, and A has only just arrived, so the looser phase 2
+        # (needs A to have waited STRICT_S) doesn't apply yet → no match.
+        ta, _ = enqueue(user=a, duration_minutes=60)
+        tb, session = enqueue(user=b, duration_minutes=30)
+        assert session is None  # genuinely stuck — the bug's symptom
+
+        # Time passes: A has now waited past STRICT_S.
+        PoolTicket.objects.filter(pk=ta.pk).update(
+            created_at=timezone.now() - timedelta(seconds=35)
+        )
+
+        # The WS recheck re-runs the matcher for B → they pair at phase 2.
+        session = try_rematch(user_id=b.id)
+        assert session is not None
+        ta.refresh_from_db()
+        tb.refresh_from_db()
+        assert ta.status == PoolTicket.STATUS_MATCHED
+        assert tb.status == PoolTicket.STATUS_MATCHED
+        assert ta.session_id == tb.session_id == session.id
+
+    def test_rematch_noop_without_waiting_ticket(self) -> None:
+        from apps.body_double.services import try_rematch
+
+        u = User.objects.create_anonymous(nickname="rm_none")
+        assert try_rematch(user_id=u.id) is None

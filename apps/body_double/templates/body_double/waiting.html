@@ -70,9 +70,21 @@
       let elapsed = 0;
 
       /* Open the matchmaking WebSocket via the shared store. */
+      const MATCH_WS = "/ws/matchmaking/" + USER_ID + "/";
       if (window.Alpine && Alpine.store("ws")) {
-        Alpine.store("ws").connect("/ws/matchmaking/" + USER_ID + "/");
+        Alpine.store("ws").connect(MATCH_WS);
       }
+
+      /* Time-based loosening needs a periodic poke: the matcher's phases
+         relax as a ticket ages, but find_match only runs at enqueue. Ping
+         the server over the same WS every few seconds so it re-runs the
+         matcher for us — two users who didn't pair on the way in get
+         re-evaluated and pair once they cross a threshold. */
+      setInterval(function () {
+        if (window.Alpine && Alpine.store("ws")) {
+          Alpine.store("ws").send(MATCH_WS, { type: "recheck" });
+        }
+      }, 4000);
 
       setInterval(function () {
         elapsed += 1;
